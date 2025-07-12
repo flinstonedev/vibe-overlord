@@ -1,0 +1,45 @@
+{
+    "name": "create-vibe-overlord",
+    "version": "1.0.0",
+    "description": "CLI tool to quickly add Vibe Overlord to existing projects",
+    "main": "dist/index.js",
+    "bin": {
+        "create-vibe-overlord": "./dist/index.js"
+    },
+    "type": "module",
+    "scripts": {
+        "build": "tsc",
+        "dev": "tsc --watch",
+        "start": "node dist/index.js"
+    },
+    "keywords": [
+        "vibe-overlord",
+        "cli",
+        "react",
+        "nextjs",
+        "ai",
+        "component-generation"
+    ],
+    "author": "",
+    "license": "ISC",
+    "dependencies": {
+        "commander": "^12.0.0",
+        "inquirer": "^10.0.0",
+        "chalk": "^5.3.0",
+        "fs-extra": "^11.2.0",
+        "ora": "^8.0.1",
+        "semver": "^7.6.0",
+        "execa": "^8.0.1"
+    },
+    "devDependencies": {
+        "@types/fs-extra": "^11.0.4",
+        "@types/inquirer": "^9.0.7",
+        "@types/node": "^20.10.0",
+        "@types/semver": "^7.5.6",
+        "typescript": "^5.4.5"
+    },
+    "files": [
+        "dist/**/*",
+        "templates/**/*"
+    ]
+}

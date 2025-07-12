@@ -212,23 +212,16 @@ MAX_PROMPT_LENGTH=5000
 
 ## 🔧 Security Testing & Monitoring
 
-### Automated Security Testing
+### Security Testing & Monitoring
 
-**CI/CD Security Pipeline:**
-```yaml
-# GitHub Actions workflow (.github/workflows/security.yml)
+**Security Testing:**
+- Manual security verification
 - NPM audit for dependency vulnerabilities
-- Custom security verification tests
-- Hardcoded secrets detection
 - Security configuration validation
-- Snyk integration for advanced scanning
-```
 
-**Security Verification Script:**
+**Security Verification:**
 ```bash
-npm run security-check  # Comprehensive security audit
-npm audit --audit-level=high  # Dependency vulnerabilities
-node security-verification.js  # Custom security tests
+npm audit --audit-level=high  # Check for dependency vulnerabilities
 ```
 
 **Test Coverage:**
@@ -363,8 +356,6 @@ Status: PRODUCTION READY
 - [env.security.example](./env.security.example) - Environment configuration template
 
 ### Security Tools
-- [GitHub Security Workflow](./.github/workflows/security.yml) - Automated security testing
-- [security-verification.js](./security-verification.js) - Custom security test suite
 - [src/security.ts](./src/security.ts) - Security utility functions
 
 ### External Resources

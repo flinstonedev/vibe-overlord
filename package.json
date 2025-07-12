@@ -21,9 +21,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "test": "vitest",
-    "security-audit": "npm audit --audit-level=high && node security-verification.js",
-    "security-check": "npm run build && npm run security-audit"
+    "test": "vitest"
   },
   "keywords": [],
   "author": "",
