@@ -1,0 +1,116 @@
+name: Security Audit
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run security audit daily at 2 AM UTC
+    - cron: '0 2 * * *'
+
+jobs:
+  security-audit:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Run npm audit
+      run: |
+        # Run npm audit and fail on high/critical vulnerabilities
+        npm audit --audit-level=high
+        
+    - name: Run security verification script
+      run: |
+        # Build the project first
+        npm run build
+        # Run our custom security verification
+        node security-verification.js
+        
+    - name: Check for hardcoded secrets
+      run: |
+        # Check for potential API keys or secrets in code
+        if grep -r -i "api[_-]key.*=.*['\"][a-zA-Z0-9-_]{20,}['\"]" src/ example/src/ --exclude-dir=node_modules || \
+           grep -r -i "secret.*=.*['\"][a-zA-Z0-9-_]{20,}['\"]" src/ example/src/ --exclude-dir=node_modules || \
+           grep -r -i "token.*=.*['\"][a-zA-Z0-9-_]{20,}['\"]" src/ example/src/ --exclude-dir=node_modules; then
+          echo "❌ Potential hardcoded secrets found!"
+          exit 1
+        else
+          echo "✅ No hardcoded secrets detected"
+        fi
+        
+    - name: Validate security configuration
+      run: |
+        # Check that security headers are properly configured
+        if ! grep -q "X-Frame-Options" example/next.config.ts; then
+          echo "❌ Missing X-Frame-Options header"
+          exit 1
+        fi
+        
+        if ! grep -q "Content-Security-Policy" example/next.config.ts; then
+          echo "❌ Missing Content-Security-Policy header"
+          exit 1
+        fi
+        
+        if grep -q "unsafe-eval" example/next.config.ts; then
+          echo "❌ CSP contains unsafe-eval - this should be removed for production"
+          exit 1
+        fi
+        
+        echo "✅ Security headers configuration looks good"
+        
+    - name: Check environment template
+      run: |
+        # Ensure .env.example exists and doesn't contain real keys
+        if [ ! -f "env.security.example" ]; then
+          echo "❌ Missing env.security.example file"
+          exit 1
+        fi
+        
+        if grep -q "sk-" env.security.example || grep -q "sk_" env.security.example; then
+          echo "❌ Real API keys found in env.security.example"
+          exit 1
+        fi
+        
+        echo "✅ Environment template is secure"
+
+  dependency-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Run Snyk to check for vulnerabilities
+      uses: snyk/actions/node@master
+      continue-on-error: true
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      with:
+        args: --severity-threshold=high
+        
+    - name: Upload Snyk results to GitHub Code Scanning
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: snyk.sarif 

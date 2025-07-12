@@ -1,0 +1,50 @@
+{
+  "name": "vibe-overlord",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
+    },
+    "./security": {
+      "types": "./dist/security.d.ts",
+      "default": "./dist/security.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest",
+    "security-audit": "npm audit --audit-level=high && node security-verification.js",
+    "security-check": "npm run build && npm run security-audit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@eslint/js": "^9.30.1",
+    "ai": "^4.3.17",
+    "eslint": "^9.30.1",
+    "globals": "^16.3.0",
+    "mdx-bundler": "^10.1.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5",
+    "typescript-eslint": "^8.36.0",
+    "vite-tsconfig-paths": "^5.1.4",
+    "vitest": "^3.2.4",
+    "vitest-mock-extended": "^3.1.0"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^1.3.23",
+    "@ai-sdk/anthropic": "^1.0.1",
+    "@ai-sdk/google": "^1.2.22",
+    "zod": "^3.22.4"
+  }
+}
