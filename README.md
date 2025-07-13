@@ -19,19 +19,20 @@ Vibe Overlord is a TypeScript library that uses AI to generate React components 
 ## Installation
 
 ```bash
-npm install vibe-overlord
-# or
-yarn add vibe-overlord
-# or
-pnpm add vibe-overlord
+# Install vibe-overlord and required dependencies
+npm install vibe-overlord mdx-bundler ai zod @ai-sdk/openai @ai-sdk/anthropic @ai-sdk/google
 ```
 
-**Dependencies:**
-Vibe Overlord includes these key dependencies:
-- `mdx-bundler` - MDX compilation
-- `ai` - AI SDK for provider integration
-- `zod` - Schema validation and type safety
-- `@ai-sdk/openai`, `@ai-sdk/anthropic`, `@ai-sdk/google` - AI provider SDKs
+**Required Dependencies:**
+Vibe Overlord requires these peer dependencies to be installed:
+- `mdx-bundler` - Core MDX compilation engine
+- `ai` - AI SDK framework for provider integration  
+- `zod` - Runtime schema validation
+- `@ai-sdk/openai` - OpenAI provider (GPT-4, etc.)
+- `@ai-sdk/anthropic` - Anthropic provider (Claude)
+- `@ai-sdk/google` - Google provider (Gemini)
+
+> ⚠️ **Important**: All dependencies must be installed for vibe-overlord to work properly.
 
 ## Prerequisites
 
@@ -55,7 +56,7 @@ export GOOGLE_GENERATIVE_AI_API_KEY=your_google_api_key_here
 **Environment Setup:**
 Copy the provided environment example file and add your API keys:
 ```bash
-cp env.security.example .env.local
+cp env.example .env.local
 # Edit .env.local and add your API key(s)
 ```
 
@@ -70,7 +71,7 @@ import path from 'path';
 async function generateMyComponent() {
   const { code, frontmatter } = await generateComponent({
     prompt: "Create a blue button with rounded corners that says 'Click me!'",
-    projectPath: path.resolve(process.cwd(), 'components'),
+    projectPath: path.resolve(process.cwd()), // Always use project root
     // Optional: specify AI provider (defaults to OpenAI)
     provider: { provider: 'openai' } // or 'anthropic' or 'google'
   });
@@ -96,6 +97,73 @@ function MyApp() {
   );
 }
 ```
+
+### Complete Next.js Example
+
+Here's a working example that you can copy-paste into a new Next.js project:
+
+**1. API Route** (`app/api/generate/route.ts`):
+```typescript
+import { generateComponent } from 'vibe-overlord';
+import { NextRequest, NextResponse } from 'next/server';
+import path from 'path';
+
+export async function POST(request: NextRequest) {
+  try {
+    const { prompt } = await request.json();
+    
+    const { code, frontmatter } = await generateComponent({
+      prompt,
+      projectPath: path.resolve(process.cwd()), // Project root
+      provider: { provider: 'openai' }
+    });
+    
+    return NextResponse.json({ code, frontmatter });
+  } catch (error) {
+    return NextResponse.json({ error: 'Failed to generate' }, { status: 500 });
+  }
+}
+```
+
+**2. Client Component** (`app/page.tsx`):
+```typescript
+'use client';
+import { useState } from 'react';
+import { getMDXComponent } from 'vibe-overlord/client';
+
+export default function Home() {
+  const [code, setCode] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const generate = async (prompt: string) => {
+    setLoading(true);
+    const response = await fetch('/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt })
+    });
+    const result = await response.json();
+    setCode(result.code);
+    setLoading(false);
+  };
+
+  const Component = code ? getMDXComponent(code) : null;
+
+  return (
+    <div className="p-8">
+      <button 
+        onClick={() => generate('Create a blue button that says Hello')}
+        disabled={loading}
+      >
+        {loading ? 'Generating...' : 'Generate Component'}
+      </button>
+      {Component && <Component />}
+    </div>
+  );
+}
+```
+
+This example will generate and render components in real-time!
 
 ## API Reference
 
@@ -133,7 +201,7 @@ Generates a React component from a text prompt using AI.
 ```typescript
 const { code, frontmatter } = await generateComponent({
   prompt: "Create a responsive card component with a title, description, and action button",
-  projectPath: path.resolve(process.cwd(), 'src/components')
+  projectPath: path.resolve(process.cwd()) // Always use project root
 });
 ```
 
@@ -141,7 +209,7 @@ const { code, frontmatter } = await generateComponent({
 ```typescript
 const { code, frontmatter } = await generateComponent({
   prompt: "Create a responsive card component",
-  projectPath: path.resolve(process.cwd(), 'src/components'),
+  projectPath: path.resolve(process.cwd()), // Always use project root
   provider: { 
     provider: 'anthropic',
     model: 'claude-3-5-sonnet-20241022' // optional
@@ -172,7 +240,7 @@ const { code, frontmatter } = await generateComponent({
       description: 'Fetch blog posts from API',
       signature: 'fetchPosts(limit?: number): Promise<Post[]>',
       returnType: 'Promise<Post[]>',
-      importPath: '../utils/api',
+      importPath: './utils/api', // Path from project root
       example: 'fetchPosts(5).then(posts => setPosts(posts))'
     }
   ]
@@ -183,14 +251,14 @@ const { code, frontmatter } = await generateComponent({
 ```typescript
 const { code, frontmatter } = await generateComponent({
   prompt: "Create a user profile card with an icon and action button",
-  projectPath: path.resolve(process.cwd(), 'src/components'),
+  projectPath: path.resolve(process.cwd()), // Always project root
   availableComponents: [
     {
       name: 'Button',
       description: 'A customizable button component with variants and sizes',
       props: 'children: ReactNode, variant?: "primary" | "secondary", size?: "sm" | "md" | "lg"',
       category: 'ui',
-      importPath: '../components/Button',
+      importPath: './src/components/Button', // Path from project root
       example: '<Button variant="primary" size="md">Click me</Button>'
     },
     {
@@ -198,7 +266,7 @@ const { code, frontmatter } = await generateComponent({
       description: 'A versatile icon component with built-in SVG icons',
       props: 'name: string, size?: number, color?: string',
       category: 'ui',
-      importPath: '../components/Icon',
+      importPath: './src/components/Icon', // Path from project root
       example: '<Icon name="user" size={24} />'
     }
   ]
@@ -209,13 +277,13 @@ const { code, frontmatter } = await generateComponent({
 ```typescript
 const { code, frontmatter } = await generateComponent({
   prompt: "Create a dashboard showing user stats with data fetching and custom components",
-  projectPath: path.resolve(process.cwd(), 'src/components'),
+  projectPath: path.resolve(process.cwd()), // Always project root
   availableUtilities: [
     {
       name: 'fetchUserStats',
       description: 'Fetch user statistics from API',
       signature: 'fetchUserStats(userId: string): Promise<UserStats>',
-      importPath: '../utils/api'
+      importPath: './utils/api' // Path from project root
     }
   ],
   availableComponents: [
@@ -224,14 +292,14 @@ const { code, frontmatter } = await generateComponent({
       description: 'A flexible card component for displaying content',
       props: 'title?: string, children: ReactNode',
       category: 'layout',
-      importPath: '../components/Card'
+      importPath: './src/components/Card' // Path from project root
     },
     {
       name: 'Badge',
       description: 'A small status indicator component',
       props: 'variant?: "success" | "warning" | "danger", children: ReactNode',
       category: 'ui',
-      importPath: '../components/Badge'
+      importPath: './src/components/Badge' // Path from project root
     }
   ]
 });
@@ -283,7 +351,7 @@ const availableComponents: AvailableComponent[] = [
     description: 'A customizable button component with variants and sizes',
     props: 'children: ReactNode, onClick?: () => void, variant?: "primary" | "secondary" | "danger", size?: "sm" | "md" | "lg"',
     category: 'ui',
-    importPath: '../components/Button',
+    importPath: './src/components/Button', // Path from project root
     example: '<Button variant="primary" size="md" onClick={() => alert("Clicked!")}>Click me</Button>'
   },
   {
@@ -291,7 +359,7 @@ const availableComponents: AvailableComponent[] = [
     description: 'A flexible card component for displaying content with optional header and footer',
     props: 'children: ReactNode, title?: string, subtitle?: string, footer?: ReactNode',
     category: 'layout',
-    importPath: '../components/Card',
+    importPath: './src/components/Card', // Path from project root
     example: '<Card title="Card Title" subtitle="Card subtitle">Card content</Card>'
   }
 ];
@@ -321,9 +389,16 @@ description: 'A customizable button component with variants and sizes'
 props: 'children: ReactNode, variant?: "primary" | "secondary", disabled?: boolean'
 ```
 
-**Import Path**: Use relative paths from your project root
+**Import Path**: Use paths relative to your project root (NOT relative to file location)
 ```typescript
-importPath: '../components/Button' // resolves correctly in generated code
+// ✅ Correct - relative to project root
+importPath: './src/components/Button'     // For src/ structure
+importPath: './app/components/Button'     // For Next.js app/ structure  
+importPath: './components/Button'         // For root components/
+
+// ❌ Wrong - relative paths from file location
+importPath: '../components/Button'        // This won't work
+importPath: '../../src/components/Button' // This won't work
 ```
 
 **Examples**: Show realistic usage patterns
@@ -338,8 +413,8 @@ When you prompt: *"Create a user profile card with edit and delete buttons"*
 Vibe Overlord generates:
 ```typescript
 import React from 'react';
-import { Card } from '../components/Card';
-import { Button } from '../components/Button';
+import { Card } from './src/components/Card';
+import { Button } from './src/components/Button';
 
 export const UserProfileCard = ({ user }) => {
   return (
@@ -383,14 +458,14 @@ export const Icon = ({ name }: { name: string }) => {
 // Tell Vibe Overlord about your component
 const { code } = await generateComponent({
   prompt: "Create a button with a home icon using the Icon component",
-  projectPath: path.resolve(process.cwd(), 'components'),
+  projectPath: path.resolve(process.cwd()), // Always project root
   availableComponents: [
     {
       name: 'Icon',
       description: 'A versatile icon component with built-in SVG icons',
       props: 'name: string, size?: number, color?: string',
       category: 'ui',
-      importPath: '../components/Icon',
+      importPath: './components/Icon', // Path from project root
       example: '<Icon name="home" size={24} color="blue" />'
     }
   ]
@@ -412,7 +487,7 @@ const availableUtilities: AvailableUtility[] = [
     description: 'Fetch blog posts from API',
     signature: 'fetchPosts(limit?: number): Promise<Post[]>',
     returnType: 'Promise<Post[]>',
-    importPath: '../utils/api',
+    importPath: './utils/api', // Path from project root
     example: 'fetchPosts(5).then(posts => setPosts(posts))'
   }
 ];
@@ -424,7 +499,7 @@ const availableComponents: AvailableComponent[] = [
     description: 'A customizable button component with variants and sizes',
     props: 'children: ReactNode, variant?: "primary" | "secondary", size?: "sm" | "md" | "lg"',
     category: 'ui',
-    importPath: '../components/Button',
+    importPath: './components/Button', // Path from project root
     example: '<Button variant="primary" size="md">Click me</Button>'
   },
   {
@@ -432,7 +507,7 @@ const availableComponents: AvailableComponent[] = [
     description: 'A flexible card component for displaying content',
     props: 'children: ReactNode, title?: string, subtitle?: string',
     category: 'layout',
-    importPath: '../components/Card',
+    importPath: './components/Card', // Path from project root
     example: '<Card title="Title">Content</Card>'
   }
 ];
@@ -623,7 +698,7 @@ example/
   │       ├── Card.tsx               # Card layout component
   │       ├── Icon.tsx               # Icon component with SVG library
   │       └── Badge.tsx              # Badge/status component
-  └── env.security.example           # Environment configuration template
+  └── env.example           # Environment configuration template
 ```
 
 ### Type Definitions
@@ -668,7 +743,7 @@ Check out the included example project in the `./example` directory to see Vibe 
 1. **Setup environment**:
 ```bash
 cd example
-cp env.security.example .env.local
+cp env.example .env.local
 # Edit .env.local and add your API key(s)
 ```
 
@@ -735,6 +810,46 @@ This library builds upon the excellent work of [Ken Doods](https://github.com/ke
 Special thanks to:
 - **Ken Doods** - Creator of mdx-bundler, the foundation for our MDX compilation
 - **The mdx-bundler contributors** - For maintaining this essential tool for the React ecosystem
+
+## Troubleshooting
+
+### "Cannot resolve module" errors
+
+**Error**: `Could not resolve "./components/Button"`
+
+**Solution**: 
+- Ensure `projectPath` is set to `path.resolve(process.cwd())` (project root)
+- Use import paths relative to project root: `'./src/components/Button'` or `'./app/components/Button'`
+- Verify the file exists at the specified path
+
+### Missing dependencies
+
+**Error**: `Cannot find module 'mdx-bundler'`
+
+**Solution**: Install all required dependencies:
+```bash
+npm install mdx-bundler ai zod @ai-sdk/openai @ai-sdk/anthropic @ai-sdk/google
+```
+
+### Component not rendering
+
+**Possible causes**:
+- Import path doesn't match actual file location
+- Component file missing proper export (`export function ComponentName` or `export default`)
+- TypeScript errors in your component files
+
+### Environment setup
+
+**Error**: No API key configured
+
+**Solution**: Create `.env.local` and add at least one API key:
+```bash
+OPENAI_API_KEY=your_key_here
+ANTHROPIC_API_KEY=your_key_here  
+GOOGLE_GENERATIVE_AI_API_KEY=your_key_here
+```
+
+For more detailed troubleshooting, check the [Security Documentation](./SECURITY.md).
 
 ## Contributing
 
