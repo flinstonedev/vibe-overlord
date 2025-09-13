@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { getMDXComponent } from 'vibe-overlord/client';
 import Demo from '@/components/demo';
 import { Icon } from '@/components/Icon';
@@ -9,9 +9,40 @@ import { Card } from '@/components/Card';
 import { Badge } from '@/components/Badge';
 import * as ApiUtils from '@/utils/api';
 
+// Error boundary to catch runtime errors in the generated component so the whole UI
+// does not freeze or blank out.
+class ComponentErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: Error | null }> {
+    constructor(props: { children: React.ReactNode }) {
+        super(props);
+        this.state = { hasError: false, error: null };
+    }
+
+    static getDerivedStateFromError(error: Error) {
+        return { hasError: true, error };
+    }
+
+    componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+        if (process.env.NODE_ENV === 'development') {
+            console.error('Generated component runtime error:', error, errorInfo);
+        }
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div className="p-3 bg-red-50 border border-red-200 rounded text-red-700">
+                    <strong>Component error:</strong> {this.state.error?.message}
+                </div>
+            );
+        }
+        return this.props.children;
+    }
+}
+
 export default function Home() {
     const [prompt, setPrompt] = useState('');
     const [componentCode, setComponentCode] = useState<string | null>(null);
+    const [compiledComponent, setCompiledComponent] = useState<React.ComponentType<any> | null>(null);
     const [frontmatter, setFrontmatter] = useState<{
         title?: string;
         description?: string;
@@ -71,21 +102,57 @@ export default function Home() {
         setLoading(false);
     };
 
-    const Component = useMemo(() => {
-        if (!componentCode) return null;
-        try {
-            return getMDXComponent(componentCode);
-        } catch (error) {
-            // Only log detailed errors in development
-            if (process.env.NODE_ENV === 'development') {
-                console.error('Error creating component:', error);
-            }
+    // Compile the MDX code **after** React has committed the DOM update so that
+    // the expensive Function constructor work does not block the UI thread.
+    useEffect(() => {
+        if (!componentCode) {
+            setCompiledComponent(null);
+            return;
+        }
 
-            // Set user-friendly error message
-            setError('Error rendering the generated component. Please try generating again.');
-            return null;
+        let cancelled = false;
+
+        // Defer compilation to the next tick to keep the UI responsive.
+        // Using requestIdleCallback when available gives the browser more leeway.
+        const compile = () => {
+            try {
+                const Comp = getMDXComponent(componentCode);
+                if (!cancelled) {
+                    setCompiledComponent(() => Comp);
+                }
+            } catch (err) {
+                if (process.env.NODE_ENV === 'development') {
+                    console.error('Error compiling generated component:', err);
+                }
+                if (!cancelled) {
+                    setError('Error rendering the generated component. Please try generating again.');
+                }
+            }
+        };
+
+        if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+            const id = (window as any).requestIdleCallback(compile);
+            return () => {
+                cancelled = true;
+                (window as any).cancelIdleCallback?.(id);
+            };
+        } else {
+            // Fallback for environments without requestIdleCallback
+            const id = setTimeout(compile, 0);
+            return () => {
+                cancelled = true;
+                clearTimeout(id);
+            };
         }
     }, [componentCode]);
+
+    // Memo-ise the map of allowed components/utilities so we don’t create a new
+    // object every render (which would trigger needless re-renders of the MDX
+    // component and could lead to performance issues).
+    const componentsMap = useMemo(() => ({ Demo, Icon, Button, Card, Badge, ...ApiUtils }), []);
+
+    // Alias with capital letter so JSX recognises it as a React component element
+    const GeneratedComponent = compiledComponent;
 
     // Simple button disable logic
     const isDisabled = loading || prompt.trim() === '';
@@ -198,10 +265,10 @@ export default function Home() {
                     )}
 
                     <div className="min-h-24 bg-gray-50 border border-dashed border-gray-300 rounded p-5 flex items-center justify-center">
-                        {Component ? (
-                            <div className="w-full">
-                                <Component components={{ Demo, Icon, Button, Card, Badge, ...ApiUtils }} />
-                            </div>
+                        {GeneratedComponent ? (
+                            <ComponentErrorBoundary>
+                                <GeneratedComponent components={componentsMap} />
+                            </ComponentErrorBoundary>
                         ) : (
                             <p className="text-gray-600 italic">
                                 No component generated yet. Enter a prompt and click &quot;Generate Component&quot; to see it rendered here.
