@@ -39,13 +39,10 @@ jobs:
 
       - name: Create GitHub Release
         if: steps.changesets.outputs.published == 'true'
-        uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: v${{ fromJSON(steps.changesets.outputs.publishedPackages)[0].version }}
-          release_name: v${{ fromJSON(steps.changesets.outputs.publishedPackages)[0].version }}
-          body: |
-            Check out the [changelog](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details.
-          draft: false
-          prerelease: false
+        run: |
+          gh release create v${{ fromJSON(steps.changesets.outputs.publishedPackages)[0].version }} \
+            --title "v${{ fromJSON(steps.changesets.outputs.publishedPackages)[0].version }}" \
+            --notes "Check out the [changelog](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details." \
+            --verify-tag
