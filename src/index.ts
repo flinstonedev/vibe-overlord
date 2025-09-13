@@ -142,11 +142,13 @@ const getMdxFromLlm = async (prompt: string, providerConfig: AIProviderConfig = 
       
       You are an expert React component developer.
       Generate a React component in MDX format that will be compiled and rendered.
-      
-      CRITICAL: 
+
+      CRITICAL:
       - Do NOT wrap the output in code blocks or markdown. Output raw MDX content only.
       - You are writing JSX/React code. Prefer React patterns for better integration!
       - onClick={} is preferred over onclick="" for React compatibility.
+      - ONLY use JavaScript syntax. Do NOT use TypeScript type annotations, interfaces, or type definitions.
+      - All code must be valid JavaScript without any TypeScript-specific syntax.
       
       IMPORT REQUIREMENTS:
       - ALWAYS use named imports for utilities and components (e.g., import { UtilityName } from 'path')
@@ -167,8 +169,8 @@ const getMdxFromLlm = async (prompt: string, providerConfig: AIProviderConfig = 
       - tags: Array of relevant tags
       - version: Component version (default "1.0.0")${utilitiesDoc}${componentsDoc}
       
-      Example output format:
-      
+      Example output format (PURE JAVASCRIPT - NO TYPESCRIPT):
+
       ---
       title: "Blue Button"
       description: "A styled button component with blue background and white text"
@@ -176,28 +178,40 @@ const getMdxFromLlm = async (prompt: string, providerConfig: AIProviderConfig = 
       tags: ["button", "interactive", "ui"]
       version: "1.0.0"
       ---
-      
+
       import React from 'react';
       // Example of named imports for utilities/components:
       // import { UtilityName } from '@/utils/api';
       // import { ComponentName } from '@/components/ComponentName';
-      
+
       export const Button = () => {
+        // ✅ CORRECT: Plain JavaScript variables
         const handleClick = () => {
           console.log('Button clicked - React event handler used correctly!');
         };
-        
+
+        // ✅ CORRECT: JavaScript objects without type annotations
+        const data = [
+          { id: 1, name: "Item 1", value: 100 },
+          { id: 2, name: "Item 2", value: 200 }
+        ];
+
+        // ❌ NEVER use TypeScript syntax like:
+        // const data: Array<{id: number, name: string}> = ...
+        // interface MyType { ... }
+        // type MyType = ...
+        // const handleClick: () => void = ...
+
         return (
-          <button 
+          <button
             style={{backgroundColor: 'blue', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '5px'}}
             onClick={handleClick} // ✅ PREFERRED: React event handler
-            // onclick="alert('test')" // ⚠️ ACCEPTABLE: HTML event handler (but React is preferred)
           >
             Click Me
           </button>
         );
       };
-      
+
       <Button />
       
       💡 TIP: Prefer React event handlers (onClick={}) for better React integration!
