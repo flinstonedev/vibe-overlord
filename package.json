@@ -1,6 +1,6 @@
 {
   "name": "vibe-overlord",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -22,6 +22,7 @@
   "scripts": {
     "build": "tsc",
     "test": "vitest",
+    "changeset": "npx @changesets/cli",
     "version": "npx @changesets/cli version",
     "release": "npx @changesets/cli publish"
   },
@@ -47,5 +48,8 @@
     "@ai-sdk/google": "^2.0.14",
     "@ai-sdk/openai": "^2.0.30",
     "zod": "^3.22.4"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
