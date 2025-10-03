@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.1
+
+### Patch Changes
+
+- Clean release of v2.0 features (republish due to npm version conflict)
+
 ## 2.0.0
 
 ### Major Changes
