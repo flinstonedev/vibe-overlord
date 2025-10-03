@@ -72,7 +72,7 @@ GOOGLE_GENERATIVE_AI_API_KEY=your_google_key_here
 import { generateComponent } from 'vibe-overlord';
 import path from 'path';
 
-const { code, frontmatter } = await generateComponent({
+  const { code, frontmatter } = await generateComponent({
   prompt: "Create a blue button with rounded corners",
   projectPath: path.resolve(process.cwd())
 });
@@ -87,15 +87,15 @@ import { NextResponse } from 'next/server';
 import path from 'path';
 
 export async function POST(request: Request) {
-  const { prompt } = await request.json();
-  
-  const { code, frontmatter } = await generateComponent({
-    prompt,
+    const { prompt } = await request.json();
+    
+    const { code, frontmatter } = await generateComponent({
+      prompt,
     projectPath: path.resolve(process.cwd()),
-    provider: { provider: 'openai' }
-  });
-  
-  return NextResponse.json({ code, frontmatter });
+      provider: { provider: 'openai' }
+    });
+    
+    return NextResponse.json({ code, frontmatter });
 }
 ```
 

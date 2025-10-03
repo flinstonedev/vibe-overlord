@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.2-next.0
+
+### Patch Changes
+
+- improvements
+
 ## 1.1.2
 
 Previous stable release with core functionality.

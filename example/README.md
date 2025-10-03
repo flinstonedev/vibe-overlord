@@ -16,9 +16,9 @@ This example demonstrates all the new features of Vibe Overlord for generating n
 
 ### 1. Install Dependencies
 
-```bash
-npm install
-```
+   ```bash
+   npm install
+   ```
 
 ### 2. Set Up Environment
 
@@ -39,9 +39,9 @@ OPENAI_API_KEY=your_openai_key_here
 
 ### 3. Run Development Server
 
-```bash
-npm run dev
-```
+   ```bash
+   npm run dev
+   ```
 
 Open [http://localhost:3000](http://localhost:3000)
 
@@ -197,7 +197,7 @@ All prompts are:
 
 Create components in `src/components/` and they'll be auto-discovered:
 
-```typescript
+   ```typescript
 // src/components/MyComponent.tsx
 
 /**
@@ -214,7 +214,7 @@ The AI will automatically know about it and can use it in generated components!
 
 Create utilities in `src/utils/` and they'll be auto-discovered:
 
-```typescript
+   ```typescript
 // src/utils/myApi.ts
 
 /**

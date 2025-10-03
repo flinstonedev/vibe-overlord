@@ -1,0 +1,10 @@
+{
+  "mode": "pre",
+  "tag": "next",
+  "initialVersions": {
+    "vibe-overlord": "2.0.1"
+  },
+  "changesets": [
+    "better-monkeys-turn"
+  ]
+}

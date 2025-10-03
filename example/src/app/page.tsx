@@ -264,8 +264,8 @@ export default function Home() {
                             <button
                                 onClick={() => setActiveTab('preview')}
                                 className={`px-4 py-2 font-medium transition-colors ${activeTab === 'preview'
-                                        ? 'text-blue-600 border-b-2 border-blue-600'
-                                        : 'text-gray-600 hover:text-gray-900'
+                                    ? 'text-blue-600 border-b-2 border-blue-600'
+                                    : 'text-gray-600 hover:text-gray-900'
                                     }`}
                             >
                                 <Icon name="eye" size={18} className="inline mr-2" />
@@ -274,8 +274,8 @@ export default function Home() {
                             <button
                                 onClick={() => setActiveTab('code')}
                                 className={`px-4 py-2 font-medium transition-colors ${activeTab === 'code'
-                                        ? 'text-blue-600 border-b-2 border-blue-600'
-                                        : 'text-gray-600 hover:text-gray-900'
+                                    ? 'text-blue-600 border-b-2 border-blue-600'
+                                    : 'text-gray-600 hover:text-gray-900'
                                     }`}
                             >
                                 <Icon name="code" size={18} className="inline mr-2" />
@@ -285,8 +285,8 @@ export default function Home() {
                                 <button
                                     onClick={() => setActiveTab('spec')}
                                     className={`px-4 py-2 font-medium transition-colors ${activeTab === 'spec'
-                                            ? 'text-blue-600 border-b-2 border-blue-600'
-                                            : 'text-gray-600 hover:text-gray-900'
+                                        ? 'text-blue-600 border-b-2 border-blue-600'
+                                        : 'text-gray-600 hover:text-gray-900'
                                         }`}
                                 >
                                     <Icon name="file-text" size={18} className="inline mr-2" />
@@ -296,8 +296,8 @@ export default function Home() {
                             <button
                                 onClick={() => setActiveTab('metadata')}
                                 className={`px-4 py-2 font-medium transition-colors ${activeTab === 'metadata'
-                                        ? 'text-blue-600 border-b-2 border-blue-600'
-                                        : 'text-gray-600 hover:text-gray-900'
+                                    ? 'text-blue-600 border-b-2 border-blue-600'
+                                    : 'text-gray-600 hover:text-gray-900'
                                     }`}
                             >
                                 <Icon name="info" size={18} className="inline mr-2" />
@@ -423,4 +423,4 @@ export default function Home() {
             </div>
         </div>
     );
-}
+} 
