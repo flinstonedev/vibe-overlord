@@ -1,8 +1,5 @@
 import { bundleMDX } from 'mdx-bundler';
 import { generateText } from 'ai';
-import { openai } from '@ai-sdk/openai';
-import { anthropic } from '@ai-sdk/anthropic';
-import { google } from '@ai-sdk/google';
 import {
   PromptSchema,
   ProjectPathSchema,
@@ -12,6 +9,17 @@ import {
   securePath,
   createSecureLogger
 } from './security.js';
+import { loadConfig, VibeOverlordConfig, defaultConfig } from './config.js';
+import { scanProject, ScannedCatalog, retrieveRelevantItems } from './scanner.js';
+import { planComponent, specToImplementationPrompt, ComponentSpec } from './planner.js';
+import { validateCodeWithAst } from './ast-validator.js';
+import { getProviderModel } from './providers.js';
+import {
+  loadBuiltInTemplates,
+  loadCustomTemplates,
+  findRelevantTemplates,
+  buildFewShotExamples
+} from './template-loader.js';
 
 export type AIProvider = 'openai' | 'anthropic' | 'google';
 
@@ -38,35 +46,14 @@ export interface AvailableComponent {
   importPath?: string;
 }
 
-const getDefaultModel = (provider: AIProvider): string => {
-  switch (provider) {
-    case 'openai':
-      return 'gpt-4o';
-    case 'anthropic':
-      return 'claude-3-5-sonnet-20241022';
-    case 'google':
-      return 'gemini-2.5-pro-latest';
-    default:
-      return 'gpt-4o';
-  }
-};
-
-const getProviderModel = (config: AIProviderConfig) => {
-  const model = config.model || getDefaultModel(config.provider);
-
-  switch (config.provider) {
-    case 'openai':
-      return openai(model);
-    case 'anthropic':
-      return anthropic(model);
-    case 'google':
-      return google(model);
-    default:
-      return openai(model);
-  }
-};
-
-const getMdxFromLlm = async (prompt: string, providerConfig: AIProviderConfig = { provider: 'openai' }, availableUtilities: AvailableUtility[] = [], availableComponents: AvailableComponent[] = []) => {
+const getMdxFromLlm = async (
+  prompt: string,
+  providerConfig: AIProviderConfig = { provider: 'openai' },
+  availableUtilities: AvailableUtility[] = [],
+  availableComponents: AvailableComponent[] = [],
+  config: VibeOverlordConfig = defaultConfig,
+  fewShotExamples: string = ''
+) => {
   const model = getProviderModel(providerConfig);
 
   // Build utilities documentation
@@ -110,6 +97,18 @@ const getMdxFromLlm = async (prompt: string, providerConfig: AIProviderConfig = 
     IMPORTANT: Always use the exact import paths specified above for each component.
     ` : '';
 
+  const typeScriptNote = config.allowTypescript
+    ? `
+    TypeScript is ALLOWED in this project.
+    - Use TypeScript type annotations where appropriate
+    - Define interfaces for complex prop types
+    - Use type assertions when needed
+    `
+    : `
+    ONLY use JavaScript syntax. Do NOT use TypeScript type annotations, interfaces, or type definitions.
+    All code must be valid JavaScript without any TypeScript-specific syntax.
+    `;
+
   const { text } = await generateText({
     model,
     system: `
@@ -127,7 +126,7 @@ const getMdxFromLlm = async (prompt: string, providerConfig: AIProviderConfig = 
       - require() statements ← NEVER USE
       - process.* access ← NEVER USE
       - window.location manipulation ← NEVER USE
-      - localStorage/sessionStorage ← NEVER USE
+      - localStorage/sessionStorage ← USE WITH CAUTION (only if really needed)
       
       ✅ PREFERRED PATTERNS:
       - onClick={handleClick} (React event handlers)
@@ -137,8 +136,15 @@ const getMdxFromLlm = async (prompt: string, providerConfig: AIProviderConfig = 
       - Standard React hooks (useState, useEffect)
       - Inline styles or CSS classes
       
-      💡 BEST PRACTICE: Use React event handlers (onClick={}) for better React integration,
-      but HTML event handlers are also acceptable in MDX contexts.
+      ♿ ACCESSIBILITY REQUIREMENTS:
+      - Add aria-label to interactive elements without text
+      - Use semantic HTML elements where appropriate
+      - Ensure keyboard navigation is possible (onKeyDown handlers)
+      - Add alt text to images
+      - Use proper form labels (htmlFor/id or aria-label)
+      - Support focus management
+      
+      💡 BEST PRACTICE: Use React event handlers (onClick={}) for better React integration.
       
       You are an expert React component developer.
       Generate a React component in MDX format that will be compiled and rendered.
@@ -147,8 +153,7 @@ const getMdxFromLlm = async (prompt: string, providerConfig: AIProviderConfig = 
       - Do NOT wrap the output in code blocks or markdown. Output raw MDX content only.
       - You are writing JSX/React code. Prefer React patterns for better integration!
       - onClick={} is preferred over onclick="" for React compatibility.
-      - ONLY use JavaScript syntax. Do NOT use TypeScript type annotations, interfaces, or type definitions.
-      - All code must be valid JavaScript without any TypeScript-specific syntax.
+      ${typeScriptNote}
       
       IMPORT REQUIREMENTS:
       - ALWAYS use named imports for utilities and components (e.g., import { UtilityName } from 'path')
@@ -167,9 +172,9 @@ const getMdxFromLlm = async (prompt: string, providerConfig: AIProviderConfig = 
       - description: Brief description
       - category: Component category (ui, form, layout, etc.)
       - tags: Array of relevant tags
-      - version: Component version (default "1.0.0")${utilitiesDoc}${componentsDoc}
+      - version: Component version (default "1.0.0")${utilitiesDoc}${componentsDoc}${fewShotExamples}
       
-      Example output format (PURE JAVASCRIPT - NO TYPESCRIPT):
+      Example output format:
 
       ---
       title: "Blue Button"
@@ -185,27 +190,15 @@ const getMdxFromLlm = async (prompt: string, providerConfig: AIProviderConfig = 
       // import { ComponentName } from '@/components/ComponentName';
 
       export const Button = () => {
-        // ✅ CORRECT: Plain JavaScript variables
         const handleClick = () => {
           console.log('Button clicked - React event handler used correctly!');
         };
 
-        // ✅ CORRECT: JavaScript objects without type annotations
-        const data = [
-          { id: 1, name: "Item 1", value: 100 },
-          { id: 2, name: "Item 2", value: 200 }
-        ];
-
-        // ❌ NEVER use TypeScript syntax like:
-        // const data: Array<{id: number, name: string}> = ...
-        // interface MyType { ... }
-        // type MyType = ...
-        // const handleClick: () => void = ...
-
         return (
           <button
             style={{backgroundColor: 'blue', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '5px'}}
-            onClick={handleClick} // ✅ PREFERRED: React event handler
+            onClick={handleClick}
+            aria-label="Click me button"
           >
             Click Me
           </button>
@@ -214,7 +207,7 @@ const getMdxFromLlm = async (prompt: string, providerConfig: AIProviderConfig = 
 
       <Button />
       
-      💡 TIP: Prefer React event handlers (onClick={}) for better React integration!
+      💡 TIP: Always consider accessibility and use proper ARIA attributes!
     `.trim(),
     prompt,
   });
@@ -232,9 +225,21 @@ interface GenerateComponentOptions {
   availableUtilities?: AvailableUtility[];
   /** Available UI components that can be used in generated components */
   availableComponents?: AvailableComponent[];
+  /** Optional configuration (will be auto-loaded if not provided) */
+  config?: VibeOverlordConfig;
+  /** Optional pre-scanned catalog (for performance) */
+  catalog?: ScannedCatalog;
 }
 
-export async function generateComponent({ prompt, projectPath, provider = { provider: 'openai' }, availableUtilities = [], availableComponents = [] }: GenerateComponentOptions) {
+export async function generateComponent({
+  prompt,
+  projectPath,
+  provider = { provider: 'openai' },
+  availableUtilities = [],
+  availableComponents = [],
+  config,
+  catalog
+}: GenerateComponentOptions) {
   const logger = createSecureLogger();
 
   try {
@@ -249,25 +254,137 @@ export async function generateComponent({ prompt, projectPath, provider = { prov
     // Secure the project path
     const secureProjectPath = securePath(process.cwd(), validatedProjectPath);
 
+    // Load configuration
+    const finalConfig = config || await loadConfig(secureProjectPath);
+
     logger.info('Generating component', {
       promptLength: sanitizedPrompt.length,
       provider: validatedProvider.provider,
-      model: validatedProvider.model || 'default'
+      model: validatedProvider.model || 'default',
+      useTwoPhase: finalConfig.useTwoPhaseGeneration,
+      useAstValidation: finalConfig.useAstValidation
     });
 
-    const mdxSource = await getMdxFromLlm(sanitizedPrompt, validatedProvider, availableUtilities, availableComponents);
+    // Scan project if catalog not provided
+    let finalCatalog = catalog;
+    let retrievedUtilities = availableUtilities;
+    let retrievedComponents = availableComponents;
 
-    // Validate the generated code for security issues (source code validation)
-    const codeValidation = validateGeneratedCode(mdxSource);
-    if (!codeValidation.isValid) {
-      logger.warn('Generated code failed security validation', { errors: codeValidation.errors });
-      throw new Error(`Generated code contains security violations: ${codeValidation.errors.join(', ')}`);
+    if (!finalCatalog && (finalConfig.componentGlobs.length > 0 || finalConfig.utilityGlobs.length > 0)) {
+      logger.info('Scanning project for components and utilities...');
+      finalCatalog = await scanProject(secureProjectPath, finalConfig);
+
+      // Retrieve relevant items based on prompt
+      const relevant = retrieveRelevantItems(sanitizedPrompt, finalCatalog, finalConfig.maxContextItems);
+      retrievedUtilities = [...availableUtilities, ...relevant.utilities];
+      retrievedComponents = [...availableComponents, ...relevant.components];
+
+      logger.info('Found relevant items', {
+        utilities: retrievedUtilities.length,
+        components: retrievedComponents.length
+      });
     }
 
-    // Ensure frontmatter exists - if not, add default frontmatter
+    // Load templates
+    let templates = finalConfig.templates?.enabled ? loadBuiltInTemplates() : [];
+    if (finalConfig.templates?.customTemplatesDir) {
+      const customTemplates = loadCustomTemplates(finalConfig.templates.customTemplatesDir);
+      templates = [...templates, ...customTemplates];
+    }
+
+    const relevantTemplates = findRelevantTemplates(sanitizedPrompt, templates, 2);
+    const fewShotExamples = buildFewShotExamples(relevantTemplates);
+
+    let mdxSource: string;
+    let spec: ComponentSpec | undefined;
+
+    // Two-phase generation
+    if (finalConfig.useTwoPhaseGeneration && finalCatalog) {
+      logger.info('Using two-phase generation (plan → implement)');
+
+      // Phase 1: Plan
+      spec = await planComponent(sanitizedPrompt, finalCatalog, validatedProvider, finalConfig.maxContextItems);
+      logger.info('Component spec created', { componentName: spec.name });
+
+      // Phase 2: Implement from spec
+      const implementationPrompt = specToImplementationPrompt(spec);
+      mdxSource = await getMdxFromLlm(
+        implementationPrompt,
+        validatedProvider,
+        retrievedUtilities,
+        retrievedComponents,
+        finalConfig,
+        fewShotExamples
+      );
+    } else {
+      // Single-phase generation
+      mdxSource = await getMdxFromLlm(
+        sanitizedPrompt,
+        validatedProvider,
+        retrievedUtilities,
+        retrievedComponents,
+        finalConfig,
+        fewShotExamples
+      );
+    }
+
+    // Validate the generated code
+    let validationResult;
+
+    if (finalConfig.useAstValidation) {
+      // Use AST-based validation (more robust)
+      validationResult = validateCodeWithAst(mdxSource, finalConfig);
+
+      if (validationResult.warnings.length > 0) {
+        logger.warn('Code validation warnings', { warnings: validationResult.warnings });
+      }
+    } else {
+      // Fall back to regex-based validation
+      validationResult = validateGeneratedCode(mdxSource);
+    }
+
+    if (!validationResult.isValid) {
+      logger.warn('Generated code failed security validation', { errors: validationResult.errors });
+
+      // Self-healing: retry once if enabled
+      if (finalConfig.enableSelfHealing && finalConfig.maxRetries > 0) {
+        logger.info('Attempting self-healing retry...');
+
+        const errorContext = `
+Previous attempt failed validation with these errors:
+${validationResult.errors.join('\n')}
+
+Please fix these issues and regenerate the component.
+`;
+
+        const retryPrompt = sanitizedPrompt + '\n\n' + errorContext;
+        mdxSource = await getMdxFromLlm(
+          retryPrompt,
+          validatedProvider,
+          retrievedUtilities,
+          retrievedComponents,
+          finalConfig,
+          fewShotExamples
+        );
+
+        // Re-validate
+        validationResult = finalConfig.useAstValidation
+          ? validateCodeWithAst(mdxSource, finalConfig)
+          : validateGeneratedCode(mdxSource);
+
+        if (!validationResult.isValid) {
+          throw new Error(`Generated code contains security violations after retry: ${validationResult.errors.join(', ')}`);
+        }
+
+        logger.info('Self-healing successful');
+      } else {
+        throw new Error(`Generated code contains security violations: ${validationResult.errors.join(', ')}`);
+      }
+    }
+
+    // Ensure frontmatter exists
     let processedMdxSource = mdxSource;
     if (!mdxSource.trim().startsWith('---')) {
-      // Extract a reasonable title from the prompt (sanitized)
       const title = sanitizedPrompt.slice(0, 50).replace(/[^a-zA-Z0-9\s]/g, '').trim() || 'Generated Component';
       const defaultFrontmatter = `---
 title: "${title}"
@@ -281,19 +398,18 @@ version: "1.0.0"
       processedMdxSource = defaultFrontmatter + mdxSource;
     }
 
-    // `mdx-bundler` will use the `cwd` to resolve imports safely
+    // Compile with mdx-bundler
     const { code, frontmatter } = await bundleMDX({
       source: processedMdxSource,
       cwd: secureProjectPath,
     });
 
-    // NOTE: We only validate the source MDX/JSX code, NOT the compiled JavaScript.
-    // The compiled code naturally contains patterns that look like HTML event handlers
-    // but are actually the result of compiling React JSX into executable JavaScript.
-    // Validating compiled code would cause false positives for legitimate React patterns.
-
     logger.info('Component generated successfully');
-    return { code, frontmatter };
+    return {
+      code,
+      frontmatter,
+      spec // Include spec if two-phase generation was used
+    };
 
   } catch (error) {
     logger.error('Component generation failed', error);
@@ -301,7 +417,7 @@ version: "1.0.0"
   }
 }
 
-// Export security utilities for use in API routes
+// Export all types and utilities
 export {
   PromptSchema,
   ProjectPathSchema,
@@ -312,4 +428,31 @@ export {
   securePath,
   validateEnvironment,
   createSecureLogger
-} from './security.js'; 
+} from './security.js';
+
+export {
+  VibeOverlordConfig,
+  defaultConfig,
+  loadConfig,
+  generateDefaultConfigFile
+} from './config.js';
+
+export {
+  scanProject,
+  ScannedCatalog,
+  retrieveRelevantItems
+} from './scanner.js';
+
+export {
+  ComponentSpec,
+  planComponent,
+  specToImplementationPrompt,
+  validateComponentSpec
+} from './planner.js';
+
+export {
+  validateCodeWithAst,
+  extractImports
+} from './ast-validator.js';
+
+export type { VibeOverlordConfig as Config };
