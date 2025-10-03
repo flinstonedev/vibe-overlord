@@ -32,7 +32,7 @@
     "test": "vitest",
     "changeset": "npx @changesets/cli",
     "version": "npx @changesets/cli version",
-    "release": "npx @changesets/cli publish"
+    "release": "node ./scripts/publish-idempotent.mjs"
   },
   "keywords": [],
   "author": "",
