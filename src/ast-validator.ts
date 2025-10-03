@@ -1,5 +1,5 @@
 import { parse } from '@babel/parser';
-import traverse from '@babel/traverse';
+import traverse, { NodePath } from '@babel/traverse';
 import * as t from '@babel/types';
 import { VibeOverlordConfig } from './config.js';
 
@@ -29,7 +29,7 @@ export function validateCodeWithAst(
 
         // Validate imports
         traverse(ast, {
-            ImportDeclaration(path) {
+            ImportDeclaration(path: NodePath<t.ImportDeclaration>) {
                 const source = path.node.source.value;
 
                 // Check if import is allowed
@@ -41,7 +41,7 @@ export function validateCodeWithAst(
             },
 
             // Check for dangerous function calls
-            CallExpression(path) {
+            CallExpression(path: NodePath<t.CallExpression>) {
                 const callee = path.node.callee;
 
                 // Check for eval()
@@ -71,7 +71,7 @@ export function validateCodeWithAst(
             },
 
             // Check for dangerous member expressions
-            MemberExpression(path) {
+            MemberExpression(path: NodePath<t.MemberExpression>) {
                 const object = path.node.object;
                 const property = path.node.property;
 
@@ -118,7 +118,7 @@ export function validateCodeWithAst(
             },
 
             // Check for JSX security issues
-            JSXAttribute(path) {
+            JSXAttribute(path: NodePath<t.JSXAttribute>) {
                 const name = path.node.name;
 
                 // Check for dangerouslySetInnerHTML
@@ -128,7 +128,7 @@ export function validateCodeWithAst(
             },
 
             // Check for accessibility issues
-            JSXOpeningElement(path) {
+            JSXOpeningElement(path: NodePath<t.JSXOpeningElement>) {
                 const name = path.node.name;
 
                 if (t.isJSXIdentifier(name)) {
@@ -258,7 +258,7 @@ export function extractImports(code: string): string[] {
         });
 
         traverse(ast, {
-            ImportDeclaration(path) {
+            ImportDeclaration(path: NodePath<t.ImportDeclaration>) {
                 imports.push(path.node.source.value);
             }
         });

@@ -2,7 +2,7 @@ import { glob } from 'glob';
 import { readFileSync } from 'fs';
 import { join, relative } from 'path';
 import { parse } from '@babel/parser';
-import traverse from '@babel/traverse';
+import traverse, { NodePath } from '@babel/traverse';
 import * as t from '@babel/types';
 import { VibeOverlordConfig } from './config.js';
 import { AvailableComponent, AvailableUtility } from './index.js';
@@ -123,7 +123,7 @@ function extractComponentsFromFile(
 
     traverse(ast, {
         // Arrow function components: export const Button = () => {}
-        VariableDeclarator(path) {
+        VariableDeclarator(path: NodePath<t.VariableDeclarator>) {
             if (
                 t.isIdentifier(path.node.id) &&
                 isExported(path) &&
@@ -144,7 +144,7 @@ function extractComponentsFromFile(
         },
 
         // Function declaration components: export function Button() {}
-        FunctionDeclaration(path) {
+        FunctionDeclaration(path: NodePath<t.FunctionDeclaration>) {
             if (
                 path.node.id &&
                 isExported(path) &&
@@ -195,7 +195,7 @@ function extractUtilitiesFromFile(
 
     traverse(ast, {
         // Arrow function utilities: export const fetchData = async () => {}
-        VariableDeclarator(path) {
+        VariableDeclarator(path: NodePath<t.VariableDeclarator>) {
             if (
                 t.isIdentifier(path.node.id) &&
                 isExported(path) &&
@@ -218,7 +218,7 @@ function extractUtilitiesFromFile(
         },
 
         // Function declaration utilities: export function fetchData() {}
-        FunctionDeclaration(path) {
+        FunctionDeclaration(path: NodePath<t.FunctionDeclaration>) {
             if (
                 path.node.id &&
                 isExported(path)
@@ -246,7 +246,7 @@ function extractUtilitiesFromFile(
 /**
  * Check if a path is exported
  */
-function isExported(path: any): boolean {
+function isExported(path: NodePath): boolean {
     let parent = path.parentPath;
     while (parent) {
         if (t.isExportNamedDeclaration(parent.node) || t.isExportDefaultDeclaration(parent.node)) {
@@ -305,7 +305,7 @@ function isUtilityFunction(node: any): boolean {
 /**
  * Extract JSDoc description
  */
-function extractDescription(path: any, comments: Map<number, string>): string | undefined {
+function extractDescription(path: NodePath, comments: Map<number, string>): string | undefined {
     const line = path.node.loc?.start.line;
     if (!line) return undefined;
 

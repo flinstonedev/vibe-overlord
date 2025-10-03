@@ -112,7 +112,7 @@ Consider:
 
 Be specific and practical. Only include what's necessary for the requested component.${availableComponents}${availableUtilities}`;
 
-    const { object } = await generateObject({
+    const result = await generateObject({
         model,
         schema: ComponentSpecSchema,
         system: systemPrompt,
@@ -131,7 +131,7 @@ Analyze the request and determine:
 Be thorough but practical. Only specify what's actually needed.`
     });
 
-    return object;
+    return result.object as ComponentSpec;
 }
 
 /**
