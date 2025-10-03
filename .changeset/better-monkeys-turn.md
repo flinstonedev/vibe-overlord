@@ -1,5 +1,0 @@
----
-'vibe-overlord': patch
----
-
-improvements

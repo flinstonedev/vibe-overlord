@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.2
+
+### Patch Changes
+
+- 87d27cd: improvements
+
 ## 2.0.2-next.0
 
 ### Patch Changes
