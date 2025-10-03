@@ -700,3 +700,69 @@ Built on [mdx-bundler](https://github.com/kentcdodds/mdx-bundler) by Kent C. Dod
 - [GitHub Issues](https://github.com/your-repo/vibe-overlord/issues)
 - [Example Project](./example)
 - [Implementation Summary](./IMPLEMENTATION_SUMMARY.md)
+
+## Releasing (npm)
+
+This repo uses Changesets + GitHub Actions to publish to npm and create GitHub Releases automatically.
+
+### Prerequisites
+
+- Set repository secret `NPM_TOKEN` with an npm token that has publish access
+- The workflow `.github/workflows/release.yml` already has the right permissions:
+  - `contents: write` and `pull-requests: write`
+  - Uses Changesets’ built‑in GitHub Release creation (`createGithubReleases: true`)
+
+### Standard release flow (latest)
+
+1) Create a changeset (choose patch/minor/major):
+
+```bash
+npx @changesets/cli add
+git add .
+git commit -m "chore: add changeset"
+git push
+```
+
+2) The Release PR is opened automatically by the workflow (title: "Release"). Review and merge it.
+
+3) When the Release PR merges into `main`, the workflow:
+- builds the package
+- publishes to npm (new version)
+- creates a Git tag `vX.Y.Z`
+- creates a GitHub Release with notes
+
+That’s it—no manual tagging or publishing required.
+
+### Safe test: prerelease to `next` (doesn’t change `latest`)
+
+```bash
+# enter prerelease mode (publishes under the `next` dist-tag)
+npx @changesets/cli pre enter next
+
+# add a tiny patch changeset and commit
+npx @changesets/cli add
+git add .
+git commit -m "chore: prerelease test"
+git push
+
+# a Release PR will open; merge it → publish to `next`
+
+# after testing, exit prerelease mode so future releases are normal
+npx @changesets/cli pre exit
+git add .changeset/pre.json || true
+git commit -m "chore: exit prerelease mode" || true
+git push
+```
+
+### Reruns and idempotency
+
+- The publish step is idempotent (we ignore EPUBLISHCONFLICT/“previously published version” on reruns)
+- If a job is retried after a successful publish, it will still pass
+- GitHub Release creation is handled by Changesets, so tag/release races are avoided
+
+### Common issues & fixes
+
+- "Cannot publish over previously published version" during a retry: expected; rerun succeeds due to idempotent publish
+- "Resource not accessible by integration" creating the Release PR: ensure workflow `permissions: contents: write` and `pull-requests: write`
+- Do not force‑push `main` during a release; if you do, just let the workflow rerun—publishing is safe
+- To rollback what users install without deleting versions: use `npm dist-tag add vibe-overlord@<version> latest` and/or `npm deprecate`
