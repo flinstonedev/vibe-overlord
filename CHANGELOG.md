@@ -1,5 +1,24 @@
 # Changelog
 
+## 3.0.0
+
+### Major Changes
+
+- 3419c96: Major release with enhanced features for non-trivial component generation
+
+  - Auto-discovery of components and utilities using AST parsing
+  - Two-phase generation (plan → implement) for better component architecture
+  - AST-based validation for robust security checks
+  - Self-healing with automatic retry on validation errors
+  - Template library with built-in patterns (forms, tables, modals)
+  - TypeScript output support (configurable)
+  - Configuration system via vibe-overlord.config.ts
+  - Accessibility guidance and validation
+  - Vector embeddings support for semantic search (optional)
+  - Comprehensive documentation and examples
+
+  100% backward compatible - no breaking changes!
+
 ## 2.0.0
 
 ### Major Changes
@@ -86,27 +105,27 @@ export {
   loadConfig,
   VibeOverlordConfig,
   generateDefaultConfigFile,
-} from 'vibe-overlord/config'
+} from "vibe-overlord/config";
 
 // Scanner
 export {
   scanProject,
   retrieveRelevantItems,
   ScannedCatalog,
-} from 'vibe-overlord/scanner'
+} from "vibe-overlord/scanner";
 
 // Planner (Two-Phase)
 export {
   planComponent,
   ComponentSpec,
   specToImplementationPrompt,
-} from 'vibe-overlord/planner'
+} from "vibe-overlord/planner";
 
 // AST Validator
 export {
   validateCodeWithAst,
   extractImports,
-} from 'vibe-overlord/ast-validator'
+} from "vibe-overlord/ast-validator";
 ```
 
 ### 🔄 Breaking Changes
@@ -125,23 +144,23 @@ export default {
   useTwoPhaseGeneration: true,
   enableSelfHealing: true,
   useAstValidation: true,
-}
+};
 ```
 
 2. **Enable auto-discovery** (optional):
 
 ```typescript
-import { loadConfig, scanProject, generateComponent } from 'vibe-overlord'
+import { loadConfig, scanProject, generateComponent } from "vibe-overlord";
 
-const config = await loadConfig(projectPath)
-const catalog = await scanProject(projectPath, config)
+const config = await loadConfig(projectPath);
+const catalog = await scanProject(projectPath, config);
 
 const { code, spec } = await generateComponent({
-  prompt: 'Your prompt',
+  prompt: "Your prompt",
   projectPath,
   config,
   catalog,
-})
+});
 ```
 
 ### 📊 Statistics
