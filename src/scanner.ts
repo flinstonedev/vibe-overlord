@@ -277,14 +277,14 @@ function isReactComponent(node: any): boolean {
         // Block body with return statement
         if (t.isBlockStatement(body)) {
             traverse(body, {
-                ReturnStatement(path) {
+                ReturnStatement(path: NodePath<t.ReturnStatement>) {
                     const argument = path.node.argument;
                     if (t.isJSXElement(argument) || t.isJSXFragment(argument)) {
                         returnsJSX = true;
                         path.stop();
                     }
                 }
-            }, node);
+            });
         }
     }
 

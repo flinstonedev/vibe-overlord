@@ -114,7 +114,7 @@ Be specific and practical. Only include what's necessary for the requested compo
 
     const result = await generateObject({
         model,
-        schema: ComponentSpecSchema,
+        schema: ComponentSpecSchema as any,
         system: systemPrompt,
         prompt: `Create a component specification for: ${prompt}
 
@@ -129,7 +129,7 @@ Analyze the request and determine:
 8. How it should be styled
 
 Be thorough but practical. Only specify what's actually needed.`
-    });
+    }) as any;
 
     return result.object as ComponentSpec;
 }
