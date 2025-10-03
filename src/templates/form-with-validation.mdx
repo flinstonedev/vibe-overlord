@@ -1,0 +1,239 @@
+---
+title: "Form with Validation"
+description: "A form component with client-side validation and error handling"
+category: "form"
+tags: ["form", "validation", "input", "error-handling"]
+version: "1.0.0"
+pattern: "form-validation"
+---
+
+import React from 'react';
+
+export const ContactForm = () => {
+  const [formData, setFormData] = React.useState({
+    name: '',
+    email: '',
+    message: ''
+  });
+  
+  const [errors, setErrors] = React.useState({});
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [submitSuccess, setSubmitSuccess] = React.useState(false);
+
+  const validateForm = () => {
+    const newErrors = {};
+    
+    if (!formData.name.trim()) {
+      newErrors.name = 'Name is required';
+    }
+    
+    if (!formData.email.trim()) {
+      newErrors.email = 'Email is required';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      newErrors.email = 'Invalid email format';
+    }
+    
+    if (!formData.message.trim()) {
+      newErrors.message = 'Message is required';
+    } else if (formData.message.length < 10) {
+      newErrors.message = 'Message must be at least 10 characters';
+    }
+    
+    return newErrors;
+  };
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+    
+    // Clear error when user starts typing
+    if (errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: '' }));
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    const validationErrors = validateForm();
+    
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      return;
+    }
+    
+    setIsSubmitting(true);
+    
+    try {
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      setSubmitSuccess(true);
+      setFormData({ name: '', email: '', message: '' });
+      
+      setTimeout(() => setSubmitSuccess(false), 3000);
+    } catch (error) {
+      setErrors({ submit: 'Failed to submit form. Please try again.' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div style={{ maxWidth: '500px', margin: '0 auto', padding: '20px' }}>
+      <h2 style={{ marginBottom: '20px', fontSize: '24px', fontWeight: 'bold' }}>
+        Contact Us
+      </h2>
+      
+      {submitSuccess && (
+        <div style={{
+          padding: '12px',
+          marginBottom: '16px',
+          backgroundColor: '#10b981',
+          color: 'white',
+          borderRadius: '6px'
+        }}>
+          Form submitted successfully!
+        </div>
+      )}
+      
+      <form onSubmit={handleSubmit}>
+        <div style={{ marginBottom: '16px' }}>
+          <label 
+            htmlFor="name"
+            style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}
+          >
+            Name *
+          </label>
+          <input
+            id="name"
+            name="name"
+            type="text"
+            value={formData.name}
+            onChange={handleChange}
+            aria-required="true"
+            aria-invalid={!!errors.name}
+            aria-describedby={errors.name ? "name-error" : undefined}
+            style={{
+              width: '100%',
+              padding: '10px',
+              border: errors.name ? '2px solid #ef4444' : '1px solid #d1d5db',
+              borderRadius: '6px',
+              fontSize: '16px'
+            }}
+          />
+          {errors.name && (
+            <p id="name-error" style={{ color: '#ef4444', fontSize: '14px', marginTop: '4px' }}>
+              {errors.name}
+            </p>
+          )}
+        </div>
+
+        <div style={{ marginBottom: '16px' }}>
+          <label 
+            htmlFor="email"
+            style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}
+          >
+            Email *
+          </label>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            value={formData.email}
+            onChange={handleChange}
+            aria-required="true"
+            aria-invalid={!!errors.email}
+            aria-describedby={errors.email ? "email-error" : undefined}
+            style={{
+              width: '100%',
+              padding: '10px',
+              border: errors.email ? '2px solid #ef4444' : '1px solid #d1d5db',
+              borderRadius: '6px',
+              fontSize: '16px'
+            }}
+          />
+          {errors.email && (
+            <p id="email-error" style={{ color: '#ef4444', fontSize: '14px', marginTop: '4px' }}>
+              {errors.email}
+            </p>
+          )}
+        </div>
+
+        <div style={{ marginBottom: '16px' }}>
+          <label 
+            htmlFor="message"
+            style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}
+          >
+            Message *
+          </label>
+          <textarea
+            id="message"
+            name="message"
+            value={formData.message}
+            onChange={handleChange}
+            rows={4}
+            aria-required="true"
+            aria-invalid={!!errors.message}
+            aria-describedby={errors.message ? "message-error" : undefined}
+            style={{
+              width: '100%',
+              padding: '10px',
+              border: errors.message ? '2px solid #ef4444' : '1px solid #d1d5db',
+              borderRadius: '6px',
+              fontSize: '16px',
+              fontFamily: 'inherit',
+              resize: 'vertical'
+            }}
+          />
+          {errors.message && (
+            <p id="message-error" style={{ color: '#ef4444', fontSize: '14px', marginTop: '4px' }}>
+              {errors.message}
+            </p>
+          )}
+        </div>
+
+        {errors.submit && (
+          <div style={{
+            padding: '12px',
+            marginBottom: '16px',
+            backgroundColor: '#fee2e2',
+            color: '#991b1b',
+            borderRadius: '6px',
+            fontSize: '14px'
+          }}>
+            {errors.submit}
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          style={{
+            width: '100%',
+            padding: '12px',
+            backgroundColor: isSubmitting ? '#9ca3af' : '#3b82f6',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            fontSize: '16px',
+            fontWeight: '600',
+            cursor: isSubmitting ? 'not-allowed' : 'pointer',
+            transition: 'background-color 0.2s'
+          }}
+          onMouseEnter={(e) => {
+            if (!isSubmitting) e.currentTarget.style.backgroundColor = '#2563eb';
+          }}
+          onMouseLeave={(e) => {
+            if (!isSubmitting) e.currentTarget.style.backgroundColor = '#3b82f6';
+          }}
+        >
+          {isSubmitting ? 'Submitting...' : 'Submit'}
+        </button>
+      </form>
+    </div>
+  );
+};
+
+<ContactForm />
+

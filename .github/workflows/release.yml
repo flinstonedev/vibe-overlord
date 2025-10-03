@@ -5,7 +5,12 @@ on:
     branches:
       - main
 
-concurrency: ${{ github.workflow }}-${{ github.ref }}
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
 
 jobs:
   release:
@@ -33,16 +38,7 @@ jobs:
           publish: npm run release
           title: "Release"
           commit: "Release"
+          createGithubReleases: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Create GitHub Release
-        if: steps.changesets.outputs.published == 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release create v${{ fromJSON(steps.changesets.outputs.publishedPackages)[0].version }} \
-            --title "v${{ fromJSON(steps.changesets.outputs.publishedPackages)[0].version }}" \
-            --notes "Check out the [changelog](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details." \
-            --verify-tag

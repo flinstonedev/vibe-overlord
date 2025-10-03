@@ -9,8 +9,7 @@ import { Card } from '@/components/Card';
 import { Badge } from '@/components/Badge';
 import * as ApiUtils from '@/utils/api';
 
-// Error boundary to catch runtime errors in the generated component so the whole UI
-// does not freeze or blank out.
+// Error boundary to catch runtime errors in the generated component
 class ComponentErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: Error | null }> {
     constructor(props: { children: React.ReactNode }) {
         super(props);
@@ -43,21 +42,16 @@ export default function Home() {
     const [prompt, setPrompt] = useState('');
     const [componentCode, setComponentCode] = useState<string | null>(null);
     const [compiledComponent, setCompiledComponent] = useState<React.ComponentType<any> | null>(null);
-    const [frontmatter, setFrontmatter] = useState<{
-        title?: string;
-        description?: string;
-        category?: string;
-        tags?: string[];
-        version?: string;
-        [key: string]: unknown;
-    } | null>(null);
+    const [frontmatter, setFrontmatter] = useState<any>(null);
+    const [spec, setSpec] = useState<any>(null);
+    const [catalogStats, setCatalogStats] = useState<any>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [provider, setProvider] = useState<'openai' | 'anthropic' | 'google'>('openai');
     const [model, setModel] = useState('');
+    const [activeTab, setActiveTab] = useState<'preview' | 'code' | 'spec' | 'metadata'>('preview');
 
     const handleGenerate = async () => {
-        // Only log in development
         if (process.env.NODE_ENV === 'development') {
             console.log('Generate button clicked');
         }
@@ -85,16 +79,16 @@ export default function Home() {
                 throw new Error(errorData.error || `Server error: ${response.status}`);
             }
 
-            const { code, frontmatter } = await response.json();
+            const { code, frontmatter, spec, catalogStats } = await response.json();
             setComponentCode(code);
             setFrontmatter(frontmatter);
+            setSpec(spec);
+            setCatalogStats(catalogStats);
         } catch (error) {
-            // Only log detailed errors in development
             if (process.env.NODE_ENV === 'development') {
                 console.error('Component generation error:', error);
             }
 
-            // Show user-friendly error message
             const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
             setError(errorMessage);
         }
@@ -102,213 +96,331 @@ export default function Home() {
         setLoading(false);
     };
 
-    // Compile the MDX code **after** React has committed the DOM update so that
-    // the expensive Function constructor work does not block the UI thread.
+    // Compile the MDX code after React has committed the DOM update
     useEffect(() => {
         if (!componentCode) {
             setCompiledComponent(null);
             return;
         }
 
-        let cancelled = false;
-
-        // Defer compilation to the next tick to keep the UI responsive.
-        // Using requestIdleCallback when available gives the browser more leeway.
-        const compile = () => {
-            try {
-                const Comp = getMDXComponent(componentCode);
-                if (!cancelled) {
-                    setCompiledComponent(() => Comp);
-                }
-            } catch (err) {
-                if (process.env.NODE_ENV === 'development') {
-                    console.error('Error compiling generated component:', err);
-                }
-                if (!cancelled) {
-                    setError('Error rendering the generated component. Please try generating again.');
-                }
+        try {
+            const Component = getMDXComponent(componentCode);
+            setCompiledComponent(() => Component);
+        } catch (compileError) {
+            if (process.env.NODE_ENV === 'development') {
+                console.error('MDX compilation error:', compileError);
             }
-        };
-
-        if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-            const id = (window as any).requestIdleCallback(compile);
-            return () => {
-                cancelled = true;
-                (window as any).cancelIdleCallback?.(id);
-            };
-        } else {
-            // Fallback for environments without requestIdleCallback
-            const id = setTimeout(compile, 0);
-            return () => {
-                cancelled = true;
-                clearTimeout(id);
-            };
+            const errorMessage = compileError instanceof Error
+                ? compileError.message
+                : 'Failed to compile generated component';
+            setError(errorMessage);
         }
     }, [componentCode]);
 
-    // Memo-ise the map of allowed components/utilities so we don’t create a new
-    // object every render (which would trigger needless re-renders of the MDX
-    // component and could lead to performance issues).
-    const componentsMap = useMemo(() => ({ Demo, Icon, Button, Card, Badge, ...ApiUtils }), []);
-
-    // Alias with capital letter so JSX recognises it as a React component element
-    const GeneratedComponent = compiledComponent;
-
-    // Simple button disable logic
-    const isDisabled = loading || prompt.trim() === '';
-
-    const getModelPlaceholder = (provider: string) => {
-        switch (provider) {
-            case 'openai':
-                return 'e.g., gpt-4o, gpt-4o-mini (default: gpt-4o)';
-            case 'anthropic':
-                return 'e.g., claude-3-5-sonnet-20241022 (default)';
-            case 'google':
-                return 'e.g., gemini-1.5-pro-latest (default)';
-            default:
-                return '';
-        }
-    };
+    const examplePrompts = [
+        'Create a user profile card with avatar, name, email, and bio',
+        'Create a pricing table with three tiers using Card and Button components',
+        'Create a blog post list that fetches posts using fetchPosts',
+        'Create a contact form with validation and error messages',
+        'Create a data table showing users with sortable columns',
+        'Create a modal dialog for confirming delete actions',
+        'Create a dashboard with key metrics in cards',
+        'Create a todo list with add, complete, and delete functionality'
+    ];
 
     return (
-        <main className="p-5 max-w-6xl mx-auto">
-            <h1 className="text-2xl font-bold mb-5">Vibe Overlord Example</h1>
-            <div className="mb-5">
-                {/* AI Provider Selection */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 p-4 bg-gray-50 rounded-lg">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            AI Provider
-                        </label>
-                        <select
-                            value={provider}
-                            onChange={(e) => {
-                                setProvider(e.target.value as 'openai' | 'anthropic' | 'google');
-                                setModel(''); // Reset model when provider changes
-                            }}
-                            className="w-full p-2 border border-gray-300 rounded text-sm"
-                        >
-                            <option value="openai">OpenAI (GPT)</option>
-                            <option value="anthropic">Anthropic (Claude)</option>
-                            <option value="google">Google (Gemini)</option>
-                        </select>
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+            <div className="container mx-auto px-4 py-8 max-w-7xl">
+                {/* Header */}
+                <div className="text-center mb-8">
+                    <h1 className="text-5xl font-bold text-gray-900 mb-3">
+                        Vibe Overlord
+                    </h1>
+                    <p className="text-xl text-gray-600 mb-2">
+                        AI-Powered React Component Generation
+                    </p>
+                    <div className="flex items-center justify-center gap-2 flex-wrap text-sm">
+                        <Badge variant="primary">Auto-Discovery</Badge>
+                        <Badge variant="success">Two-Phase Generation</Badge>
+                        <Badge variant="info">AST Validation</Badge>
+                        <Badge variant="warning">Self-Healing</Badge>
                     </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Model (optional)
-                        </label>
-                        <input
-                            type="text"
-                            value={model}
-                            onChange={(e) => setModel(e.target.value)}
-                            placeholder={getModelPlaceholder(provider)}
-                            className="w-full p-2 border border-gray-300 rounded text-sm"
-                        />
-                    </div>
-                </div>
-
-                <textarea
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    placeholder="Enter a prompt to generate a component (e.g., create a blue button with rounded corners)"
-                    rows={4}
-                    className="w-full p-3 mb-3 rounded border border-gray-300 text-sm"
-                />
-                <button
-                    onClick={handleGenerate}
-                    disabled={isDisabled}
-                    className={`px-5 py-2 text-white border-none rounded text-sm ${isDisabled
-                        ? 'bg-gray-400 cursor-not-allowed'
-                        : 'bg-blue-500 hover:bg-blue-600 cursor-pointer'
-                        }`}
-                >
-                    {loading ? 'Generating...' : 'Generate Component'}
-                </button>
-            </div>
-
-            {error && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded mb-5 text-red-700">
-                    <strong>Error:</strong> {error}
-                </div>
-            )}
-
-            <div className="flex flex-col gap-6">
-                {/* Rendered Component */}
-                <div className="border border-gray-200 rounded-lg p-5">
-                    <h2 className="mt-0 mb-4 text-lg font-semibold text-gray-800">Rendered Component:</h2>
-
-                    {/* Component Metadata */}
-                    {frontmatter && Object.keys(frontmatter).length > 0 && (
-                        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded">
-                            <h3 className="text-sm font-medium text-blue-900 mb-2">Component Info:</h3>
-                            {frontmatter.title && (
-                                <p className="text-sm text-blue-800 mb-1">
-                                    <strong>Title:</strong> {frontmatter.title}
-                                </p>
-                            )}
-                            {frontmatter.description && (
-                                <p className="text-sm text-blue-800 mb-1">
-                                    <strong>Description:</strong> {frontmatter.description}
-                                </p>
-                            )}
-                            {frontmatter.tags && Array.isArray(frontmatter.tags) && (
-                                <p className="text-sm text-blue-800 mb-1">
-                                    <strong>Tags:</strong> {frontmatter.tags.join(', ')}
-                                </p>
-                            )}
-                            {frontmatter.category && (
-                                <p className="text-sm text-blue-800">
-                                    <strong>Category:</strong> {frontmatter.category}
-                                </p>
-                            )}
-                        </div>
+                    {catalogStats && (
+                        <p className="text-sm text-gray-500 mt-2">
+                            📦 Discovered: {catalogStats.components} components, {catalogStats.utilities} utilities
+                        </p>
                     )}
-
-                    <div className="min-h-24 bg-gray-50 border border-dashed border-gray-300 rounded p-5 flex items-center justify-center">
-                        {GeneratedComponent ? (
-                            <ComponentErrorBoundary>
-                                <GeneratedComponent components={componentsMap} />
-                            </ComponentErrorBoundary>
-                        ) : (
-                            <p className="text-gray-600 italic">
-                                No component generated yet. Enter a prompt and click &quot;Generate Component&quot; to see it rendered here.
-                            </p>
-                        )}
-                    </div>
                 </div>
 
-                {/* Code Preview */}
-                <div className="border border-gray-200 rounded-lg p-5">
-                    <h2 className="mt-0 mb-4 text-lg font-semibold text-gray-800">Generated Code:</h2>
-                    <div className="min-h-24 bg-gray-50 border border-gray-300 rounded p-4 overflow-auto text-xs font-mono max-h-96">
-                        {componentCode ? (
-                            <pre className="m-0 whitespace-pre-wrap break-words">
-                                {componentCode}
-                            </pre>
-                        ) : (
-                            <p className="text-gray-600 italic m-0">
-                                Generated code will appear here...
-                            </p>
-                        )}
-                    </div>
-                </div>
+                {/* Input Section */}
+                <Card className="mb-6" shadow="lg">
+                    <div className="space-y-4">
+                        <div>
+                            <label htmlFor="prompt" className="block text-sm font-semibold text-gray-700 mb-2">
+                                Describe your component:
+                            </label>
+                            <textarea
+                                id="prompt"
+                                value={prompt}
+                                onChange={(e) => setPrompt(e.target.value)}
+                                className="w-full p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none transition-all"
+                                rows={4}
+                                placeholder="e.g., Create a user profile card with avatar, name, email, and a button to edit"
+                                disabled={loading}
+                            />
+                        </div>
 
-                {/* Frontmatter Preview */}
-                <div className="border border-gray-200 rounded-lg p-5">
-                    <h2 className="mt-0 mb-4 text-lg font-semibold text-gray-800">Metadata (Frontmatter):</h2>
-                    <div className="min-h-24 bg-gray-50 border border-gray-300 rounded p-4 overflow-auto text-xs font-mono max-h-64">
-                        {frontmatter ? (
-                            <pre className="m-0 whitespace-pre-wrap break-words">
-                                {JSON.stringify(frontmatter, null, 2)}
-                            </pre>
-                        ) : (
-                            <p className="text-gray-600 italic m-0">
-                                Component metadata will appear here...
-                            </p>
+                        {/* Provider Selection */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label htmlFor="provider" className="block text-sm font-medium text-gray-700 mb-2">
+                                    AI Provider:
+                                </label>
+                                <select
+                                    id="provider"
+                                    value={provider}
+                                    onChange={(e) => setProvider(e.target.value as any)}
+                                    className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                    disabled={loading}
+                                >
+                                    <option value="openai">OpenAI (GPT-4o)</option>
+                                    <option value="anthropic">Anthropic (Claude)</option>
+                                    <option value="google">Google (Gemini)</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label htmlFor="model" className="block text-sm font-medium text-gray-700 mb-2">
+                                    Model (optional):
+                                </label>
+                                <input
+                                    id="model"
+                                    type="text"
+                                    value={model}
+                                    onChange={(e) => setModel(e.target.value)}
+                                    className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                    placeholder="e.g., gpt-4o-mini"
+                                    disabled={loading}
+                                />
+                            </div>
+                        </div>
+
+                        <Button
+                            onClick={handleGenerate}
+                            disabled={loading || !prompt.trim()}
+                            variant="primary"
+                            size="lg"
+                            className="w-full"
+                        >
+                            {loading ? (
+                                <>
+                                    <Icon name="loader" size={20} className="animate-spin mr-2" />
+                                    Generating...
+                                </>
+                            ) : (
+                                <>
+                                    <Icon name="sparkles" size={20} className="mr-2" />
+                                    Generate Component
+                                </>
+                            )}
+                        </Button>
+                    </div>
+                </Card>
+
+                {/* Example Prompts */}
+                <Card className="mb-6" title="Example Prompts" padding="md">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {examplePrompts.map((example, index) => (
+                            <button
+                                key={index}
+                                onClick={() => setPrompt(example)}
+                                className="text-left p-3 text-sm text-gray-700 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
+                                disabled={loading}
+                            >
+                                {example}
+                            </button>
+                        ))}
+                    </div>
+                </Card>
+
+                {/* Error Display */}
+                {error && (
+                    <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 rounded-r-lg">
+                        <div className="flex items-start">
+                            <Icon name="alert-circle" size={20} className="mr-2 mt-0.5" />
+                            <div>
+                                <strong className="font-semibold">Error:</strong>
+                                <p className="mt-1">{error}</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Results Section */}
+                {compiledComponent && (
+                    <div className="space-y-4">
+                        {/* Tabs */}
+                        <div className="flex gap-2 border-b border-gray-300">
+                            <button
+                                onClick={() => setActiveTab('preview')}
+                                className={`px-4 py-2 font-medium transition-colors ${activeTab === 'preview'
+                                        ? 'text-blue-600 border-b-2 border-blue-600'
+                                        : 'text-gray-600 hover:text-gray-900'
+                                    }`}
+                            >
+                                <Icon name="eye" size={18} className="inline mr-2" />
+                                Preview
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('code')}
+                                className={`px-4 py-2 font-medium transition-colors ${activeTab === 'code'
+                                        ? 'text-blue-600 border-b-2 border-blue-600'
+                                        : 'text-gray-600 hover:text-gray-900'
+                                    }`}
+                            >
+                                <Icon name="code" size={18} className="inline mr-2" />
+                                Code
+                            </button>
+                            {spec && (
+                                <button
+                                    onClick={() => setActiveTab('spec')}
+                                    className={`px-4 py-2 font-medium transition-colors ${activeTab === 'spec'
+                                            ? 'text-blue-600 border-b-2 border-blue-600'
+                                            : 'text-gray-600 hover:text-gray-900'
+                                        }`}
+                                >
+                                    <Icon name="file-text" size={18} className="inline mr-2" />
+                                    Specification
+                                </button>
+                            )}
+                            <button
+                                onClick={() => setActiveTab('metadata')}
+                                className={`px-4 py-2 font-medium transition-colors ${activeTab === 'metadata'
+                                        ? 'text-blue-600 border-b-2 border-blue-600'
+                                        : 'text-gray-600 hover:text-gray-900'
+                                    }`}
+                            >
+                                <Icon name="info" size={18} className="inline mr-2" />
+                                Metadata
+                            </button>
+                        </div>
+
+                        {/* Tab Content */}
+                        {activeTab === 'preview' && (
+                            <Card title="Component Preview" shadow="lg" padding="lg">
+                                <ComponentErrorBoundary>
+                                    {compiledComponent && React.createElement(compiledComponent, {
+                                        components: { Demo, Icon, Button, Card, Badge },
+                                        ...ApiUtils
+                                    })}
+                                </ComponentErrorBoundary>
+                            </Card>
+                        )}
+
+                        {activeTab === 'code' && (
+                            <Card title="Generated Code" shadow="lg" padding="none">
+                                <pre className="p-6 overflow-x-auto bg-gray-900 text-gray-100 rounded-lg text-sm">
+                                    <code>{componentCode}</code>
+                                </pre>
+                            </Card>
+                        )}
+
+                        {activeTab === 'spec' && spec && (
+                            <Card title="Component Specification" shadow="lg" padding="lg">
+                                <div className="space-y-4">
+                                    <div>
+                                        <h3 className="font-semibold text-lg mb-2">{spec.name}</h3>
+                                        <p className="text-gray-600">{spec.description}</p>
+                                        <Badge variant="info" className="mt-2">{spec.category}</Badge>
+                                    </div>
+
+                                    {spec.state && spec.state.length > 0 && (
+                                        <div>
+                                            <h4 className="font-semibold mb-2">State:</h4>
+                                            <ul className="list-disc list-inside space-y-1 text-sm">
+                                                {spec.state.map((s: any, i: number) => (
+                                                    <li key={i}>
+                                                        <strong>{s.name}</strong>: {s.type} - {s.description}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+
+                                    {spec.props && spec.props.length > 0 && (
+                                        <div>
+                                            <h4 className="font-semibold mb-2">Props:</h4>
+                                            <ul className="list-disc list-inside space-y-1 text-sm">
+                                                {spec.props.map((p: any, i: number) => (
+                                                    <li key={i}>
+                                                        <strong>{p.name}</strong>: {p.type} {p.required && <Badge variant="warning" size="sm">required</Badge>}
+                                                        <p className="ml-6 text-gray-600">{p.description}</p>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+
+                                    {spec.accessibility && (
+                                        <div>
+                                            <h4 className="font-semibold mb-2">Accessibility:</h4>
+                                            <ul className="list-disc list-inside space-y-1 text-sm">
+                                                {spec.accessibility.hasKeyboardNav && <li>Keyboard navigation supported</li>}
+                                                {spec.accessibility.ariaLabels && spec.accessibility.ariaLabels.map((label: string, i: number) => (
+                                                    <li key={i}>ARIA: {label}</li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                </div>
+                            </Card>
+                        )}
+
+                        {activeTab === 'metadata' && frontmatter && (
+                            <Card title="Component Metadata" shadow="lg" padding="lg">
+                                <dl className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                    {frontmatter.title && (
+                                        <>
+                                            <dt className="font-semibold text-gray-700">Title:</dt>
+                                            <dd className="text-gray-600">{frontmatter.title}</dd>
+                                        </>
+                                    )}
+                                    {frontmatter.description && (
+                                        <>
+                                            <dt className="font-semibold text-gray-700">Description:</dt>
+                                            <dd className="text-gray-600">{frontmatter.description}</dd>
+                                        </>
+                                    )}
+                                    {frontmatter.category && (
+                                        <>
+                                            <dt className="font-semibold text-gray-700">Category:</dt>
+                                            <dd>
+                                                <Badge variant="info">{frontmatter.category}</Badge>
+                                            </dd>
+                                        </>
+                                    )}
+                                    {frontmatter.tags && Array.isArray(frontmatter.tags) && (
+                                        <>
+                                            <dt className="font-semibold text-gray-700">Tags:</dt>
+                                            <dd className="flex gap-2 flex-wrap">
+                                                {frontmatter.tags.map((tag, i) => (
+                                                    <Badge key={i} variant="secondary" size="sm">{tag}</Badge>
+                                                ))}
+                                            </dd>
+                                        </>
+                                    )}
+                                    {frontmatter.version && (
+                                        <>
+                                            <dt className="font-semibold text-gray-700">Version:</dt>
+                                            <dd className="text-gray-600">{frontmatter.version}</dd>
+                                        </>
+                                    )}
+                                </dl>
+                            </Card>
                         )}
                     </div>
-                </div>
+                )}
             </div>
-        </main>
+        </div>
     );
-} 
+}
