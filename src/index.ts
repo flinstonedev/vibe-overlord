@@ -21,6 +21,7 @@ import {
   buildFewShotExamples
 } from './template-loader.js';
 import { fixTypeScriptForMDX } from './mdx-typescript-fixer.js';
+import { autoFixMdx } from './mdx-auto-fixer.js';
 
 export type AIProvider = 'openai' | 'anthropic' | 'google';
 
@@ -112,6 +113,45 @@ const getMdxFromLlm = async (
     IMPORTANT: Always use the exact import paths specified above for each component.
     ` : '';
 
+  const mdxStructureNote = `
+    📋 MDX FILE STRUCTURE (CRITICAL - FOLLOW EXACTLY):
+
+    MDX allows ONLY these at the top level:
+    1. Frontmatter (between --- markers)
+    2. import statements
+    3. export statements
+
+    ❌ FORBIDDEN at top level:
+    - const/let/var declarations
+    - function declarations (non-exported)
+    - ANY code outside imports/exports
+
+    ✅ CORRECT MDX structure:
+    ---
+    title: "Component"
+    ---
+
+    import React from 'react';
+    import { utility } from './utils';
+
+    export const Component = () => {
+      // ALL variables, constants, and helper functions go INSIDE the component
+      const emailRegex = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;
+      const defaultValue = 'something';
+
+      const helperFunction = () => { ... };
+
+      return <div>...</div>;
+    };
+
+    <Component />
+
+    ❌ WRONG - will cause "Unexpected VariableDeclaration" error:
+    import React from 'react';
+    const emailRegex = /regex/;  // ← FORBIDDEN! Not inside export
+    export const Component = () => { ... };
+  `;
+
   const typeScriptNote = config.allowTypescript
     ? `
     TypeScript interfaces are ALLOWED for props definitions.
@@ -171,9 +211,23 @@ const getMdxFromLlm = async (
       - Add alt text to images
       - Use proper form labels (htmlFor/id or aria-label)
       - Support focus management
-      
+
+      🔑 REACT KEYS (CRITICAL - AVOID DUPLICATE KEY WARNINGS):
+      When rendering arrays/lists, ALWAYS use UNIQUE keys:
+      ✅ CORRECT: Use unique IDs from data
+        {items.map(item => <div key={item.id}>{item.name}</div>)}
+
+      ✅ CORRECT: Generate unique keys (if no ID available)
+        {items.map((item, index) => <div key={\`item-\${index}-\${item.name}\`}>{item.name}</div>)}
+
+      ❌ WRONG: Using array index alone (causes duplicate key warnings)
+        {items.map((item, index) => <div key={index}>{item.name}</div>)}
+
+      ❌ WRONG: Using non-unique values
+        {items.map(item => <div key={item.category}>{item.name}</div>)}
+
       💡 BEST PRACTICE: Use React event handlers (onClick={}) for better React integration.
-      
+
       You are an expert React component developer.
       Generate a React component in MDX format that will be compiled and rendered.
 
@@ -181,6 +235,8 @@ const getMdxFromLlm = async (
       - Do NOT wrap the output in code blocks or markdown. Output raw MDX content only.
       - You are writing JSX/React code. Prefer React patterns for better integration!
       - onClick={} is preferred over onclick="" for React compatibility.
+
+      ${mdxStructureNote}
       ${typeScriptNote}
       
       IMPORT REQUIREMENTS:
@@ -357,6 +413,13 @@ export async function generateComponent({
       );
     }
 
+    // Apply automatic fixes for common issues
+    const autoFixResult = autoFixMdx(mdxSource);
+    if (autoFixResult.fixes.length > 0) {
+      logger.info('Applied automatic fixes', { fixes: autoFixResult.fixes });
+      mdxSource = autoFixResult.code;
+    }
+
     // Validate the generated code
     let validationResult;
 
@@ -375,11 +438,19 @@ export async function generateComponent({
     if (!validationResult.isValid) {
       logger.warn('Generated code failed security validation', { errors: validationResult.errors });
 
-      // Self-healing: retry once if enabled
+      // Self-healing: retry with progressive fallback
       if (finalConfig.enableSelfHealing && finalConfig.maxRetries > 0) {
-        logger.info('Attempting self-healing retry...');
+        let retryCount = 0;
+        const maxRetries = Math.min(finalConfig.maxRetries, 2); // Cap at 2 retries
 
-        const errorContext = `
+        while (retryCount < maxRetries && !validationResult.isValid) {
+          retryCount++;
+
+          if (retryCount === 1) {
+            // First retry: Try to fix the specific errors
+            logger.info('Attempting self-healing retry (attempt 1/2: fix errors)...');
+
+            const errorContext = `
 ⚠️ PREVIOUS ATTEMPT FAILED WITH THESE ERRORS:
 ${validationResult.errors.join('\n')}
 
@@ -390,26 +461,76 @@ CRITICAL INSTRUCTIONS FOR RETRY:
 - Start with --- frontmatter, then imports, then component code
 `;
 
-        const retryPrompt = sanitizedPrompt + '\n\n' + errorContext;
-        mdxSource = await getMdxFromLlm(
-          retryPrompt,
-          validatedProvider,
-          retrievedUtilities,
-          retrievedComponents,
-          finalConfig,
-          fewShotExamples
-        );
+            const retryPrompt = sanitizedPrompt + '\n\n' + errorContext;
+            mdxSource = await getMdxFromLlm(
+              retryPrompt,
+              validatedProvider,
+              retrievedUtilities,
+              retrievedComponents,
+              finalConfig,
+              fewShotExamples
+            );
 
-        // Re-validate
-        validationResult = finalConfig.useAstValidation
-          ? validateCodeWithAst(mdxSource, finalConfig)
-          : validateGeneratedCode(mdxSource);
+            // Apply auto-fixes after retry
+            const retryAutoFix = autoFixMdx(mdxSource);
+            if (retryAutoFix.fixes.length > 0) {
+              logger.info('Applied automatic fixes after retry 1', { fixes: retryAutoFix.fixes });
+              mdxSource = retryAutoFix.code;
+            }
+          } else {
+            // Second retry: Ask for a minimal/simplified version
+            logger.info('Attempting self-healing retry (attempt 2/2: minimal version)...');
 
-        if (!validationResult.isValid) {
-          throw new Error(`Generated code contains security violations after retry: ${validationResult.errors.join(', ')}`);
+            const minimalContext = `
+⚠️ PREVIOUS ATTEMPTS FAILED WITH REPEATED ERRORS:
+${validationResult.errors.join('\n')}
+
+🎯 SIMPLIFIED APPROACH NEEDED:
+Create a MINIMAL working version of the requested component.
+- Use the simplest implementation possible
+- Avoid complex patterns that might cause errors
+- Focus on core functionality only
+- Use inline styles instead of complex CSS
+- Avoid mapping over arrays if possible (use hardcoded examples instead)
+- Keep state management simple
+- Do NOT wrap output in code blocks
+- Output ONLY raw MDX content starting with --- frontmatter
+`;
+
+            const minimalPrompt = `Create a minimal version of: ${sanitizedPrompt}` + '\n\n' + minimalContext;
+            mdxSource = await getMdxFromLlm(
+              minimalPrompt,
+              validatedProvider,
+              retrievedUtilities,
+              retrievedComponents,
+              finalConfig,
+              fewShotExamples
+            );
+
+            // Apply auto-fixes after minimal retry
+            const minimalAutoFix = autoFixMdx(mdxSource);
+            if (minimalAutoFix.fixes.length > 0) {
+              logger.info('Applied automatic fixes after retry 2', { fixes: minimalAutoFix.fixes });
+              mdxSource = minimalAutoFix.code;
+            }
+          }
+
+          // Re-validate
+          validationResult = finalConfig.useAstValidation
+            ? validateCodeWithAst(mdxSource, finalConfig)
+            : validateGeneratedCode(mdxSource);
+
+          if (validationResult.isValid) {
+            logger.info(`Self-healing successful on attempt ${retryCount}`);
+            break;
+          } else if (retryCount < maxRetries) {
+            logger.warn(`Retry ${retryCount} failed, attempting next strategy...`, { errors: validationResult.errors });
+          }
         }
 
-        logger.info('Self-healing successful');
+        if (!validationResult.isValid) {
+          throw new Error(`Generated code contains security violations after ${retryCount} retries: ${validationResult.errors.join(', ')}`);
+        }
       } else {
         throw new Error(`Generated code contains security violations: ${validationResult.errors.join(', ')}`);
       }
@@ -437,54 +558,155 @@ version: "1.0.0"
       logger.info('Transpiled TypeScript to JavaScript for MDX compatibility');
     }
 
-    // Compile with mdx-bundler
+    // Compile with mdx-bundler (with retry for compilation errors)
     let code: string;
     let frontmatter: any;
+    let bundleSuccess = false;
+    let bundleRetryCount = 0;
+    const maxBundleRetries = finalConfig.enableSelfHealing && finalConfig.maxRetries > 0 ? 2 : 0;
 
-    try {
-      const result = await bundleMDX({
-        source: processedMdxSource,
-        cwd: secureProjectPath,
-        esbuildOptions: (options) => {
-          // Mark all relative and alias imports as external
-          // This prevents bundler from trying to resolve them
-          // They'll be resolved at runtime by the consuming app
-          options.plugins = [
-            ...(options.plugins || []),
-            {
-              name: 'external-project-imports',
-              setup(build) {
-                // Mark relative imports as external (./utils, ../components, etc)
-                build.onResolve({ filter: /^\.\.?\// }, args => ({
-                  path: args.path,
-                  external: true
-                }));
+    while (!bundleSuccess && bundleRetryCount <= maxBundleRetries) {
+      try {
+        const result = await bundleMDX({
+          source: processedMdxSource,
+          cwd: secureProjectPath,
+          esbuildOptions: (options) => {
+            // Mark all relative and alias imports as external
+            // This prevents bundler from trying to resolve them
+            // They'll be resolved at runtime by the consuming app
+            options.plugins = [
+              ...(options.plugins || []),
+              {
+                name: 'external-project-imports',
+                setup(build) {
+                  // Mark relative imports as external (./utils, ../components, etc)
+                  build.onResolve({ filter: /^\.\.?\// }, args => ({
+                    path: args.path,
+                    external: true
+                  }));
 
-                // Mark @/ alias imports as external
-                build.onResolve({ filter: /^@\// }, args => ({
-                  path: args.path,
-                  external: true
-                }));
+                  // Mark @/ alias imports as external
+                  build.onResolve({ filter: /^@\// }, args => ({
+                    path: args.path,
+                    external: true
+                  }));
+                }
               }
+            ];
+            return options;
+          }
+        });
+        code = result.code;
+        frontmatter = result.frontmatter;
+        bundleSuccess = true;
+      } catch (bundleError) {
+        const errorMessage = bundleError instanceof Error ? bundleError.message : 'Unknown bundling error';
+
+        logger.error('MDX bundling failed', {
+          error: bundleError,
+          generatedSource: processedMdxSource.substring(0, 1000),
+          attempt: bundleRetryCount + 1
+        });
+
+        if (bundleRetryCount < maxBundleRetries) {
+          bundleRetryCount++;
+          logger.info(`Attempting to regenerate component (bundle retry ${bundleRetryCount}/${maxBundleRetries})...`);
+
+          if (bundleRetryCount === 1) {
+            // First retry: Fix the specific compilation error
+            const bundleErrorContext = `
+⚠️ MDX COMPILATION FAILED WITH ERROR:
+${errorMessage}
+
+CRITICAL INSTRUCTIONS:
+- Fix the compilation error above
+- Ensure valid MDX/JSX syntax
+- Do NOT wrap output in code blocks
+- Output ONLY raw MDX content starting with --- frontmatter
+`;
+
+            const retryPrompt = sanitizedPrompt + '\n\n' + bundleErrorContext;
+            mdxSource = await getMdxFromLlm(
+              retryPrompt,
+              validatedProvider,
+              retrievedUtilities,
+              retrievedComponents,
+              finalConfig,
+              fewShotExamples
+            );
+
+            // Apply auto-fixes after bundle retry 1
+            const bundleRetryAutoFix1 = autoFixMdx(mdxSource);
+            if (bundleRetryAutoFix1.fixes.length > 0) {
+              logger.info('Applied automatic fixes after bundle retry 1', { fixes: bundleRetryAutoFix1.fixes });
+              mdxSource = bundleRetryAutoFix1.code;
             }
-          ];
-          return options;
+          } else {
+            // Second retry: Minimal version
+            const minimalBundleContext = `
+⚠️ MDX COMPILATION FAILED REPEATEDLY:
+${errorMessage}
+
+🎯 GENERATE A MINIMAL VERSION:
+Create the SIMPLEST possible working version.
+- Use basic JSX only
+- Avoid complex patterns
+- Use inline styles only
+- Keep it minimal and functional
+- Do NOT wrap output in code blocks
+- Output ONLY raw MDX content starting with --- frontmatter
+`;
+
+            const minimalPrompt = `Create a minimal version of: ${sanitizedPrompt}` + '\n\n' + minimalBundleContext;
+            mdxSource = await getMdxFromLlm(
+              minimalPrompt,
+              validatedProvider,
+              retrievedUtilities,
+              retrievedComponents,
+              finalConfig,
+              fewShotExamples
+            );
+
+            // Apply auto-fixes after bundle retry 2
+            const bundleRetryAutoFix2 = autoFixMdx(mdxSource);
+            if (bundleRetryAutoFix2.fixes.length > 0) {
+              logger.info('Applied automatic fixes after bundle retry 2', { fixes: bundleRetryAutoFix2.fixes });
+              mdxSource = bundleRetryAutoFix2.code;
+            }
+          }
+
+          // Re-validate and re-transpile for retry
+          const retryValidation = finalConfig.useAstValidation
+            ? validateCodeWithAst(mdxSource, finalConfig)
+            : validateGeneratedCode(mdxSource);
+
+          if (!retryValidation.isValid) {
+            throw new Error(`Retry generated invalid code: ${retryValidation.errors.join(', ')}`);
+          }
+
+          processedMdxSource = mdxSource;
+          if (!processedMdxSource.trim().startsWith('---')) {
+            const title = sanitizedPrompt.slice(0, 50).replace(/[^a-zA-Z0-9\s]/g, '').trim() || 'Generated Component';
+            processedMdxSource = `---\ntitle: "${title}"\ndescription: "AI-generated React component"\ncategory: "ui"\ntags: ["generated", "component"]\nversion: "1.0.0"\n---\n\n` + processedMdxSource;
+          }
+          if (finalConfig.allowTypescript) {
+            processedMdxSource = fixTypeScriptForMDX(processedMdxSource);
+          }
+        } else {
+          throw new Error(`Failed to compile generated component after ${bundleRetryCount} retries: ${errorMessage}`);
         }
-      });
-      code = result.code;
-      frontmatter = result.frontmatter;
-    } catch (bundleError) {
-      logger.error('MDX bundling failed', {
-        error: bundleError,
-        generatedSource: processedMdxSource.substring(0, 1000) // Log first 1000 chars to see line 18
-      });
-      throw new Error(`Failed to compile generated component: ${bundleError instanceof Error ? bundleError.message : 'Unknown bundling error'}`);
+      }
+    }
+
+    // Ensure bundling succeeded
+    if (!bundleSuccess) {
+      throw new Error('Failed to compile MDX component - bundling did not complete');
     }
 
     logger.info('Component generated successfully');
     return {
-      code,
-      frontmatter,
+      code: code!,
+      frontmatter: frontmatter!,
       spec // Include spec if two-phase generation was used
     };
 
