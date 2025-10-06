@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.3
+
+### Patch Changes
+
+- 641c2d1: fix component generation
+
 ## 2.0.3-next.0
 
 ### Patch Changes
