@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { getMDXComponent } from 'vibe-overlord/client';
 import Demo from '@/components/demo';
 import { Icon } from '@/components/Icon';
@@ -8,6 +8,31 @@ import { Button } from '@/components/Button';
 import { Card } from '@/components/Card';
 import { Badge } from '@/components/Badge';
 import * as ApiUtils from '@/utils/api';
+
+interface Frontmatter {
+    title?: string;
+    description?: string;
+    category?: string;
+    tags?: string[];
+    version?: string;
+}
+
+interface ComponentSpec {
+    name: string;
+    description: string;
+    category: string;
+    state?: Array<{ name: string; type: string; description: string }>;
+    props?: Array<{ name: string; type: string; required: boolean; description: string }>;
+    accessibility?: {
+        hasKeyboardNav?: boolean;
+        ariaLabels?: string[];
+    };
+}
+
+interface CatalogStats {
+    components: number;
+    utilities: number;
+}
 
 // Error boundary to catch runtime errors in the generated component
 class ComponentErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: Error | null }> {
@@ -41,10 +66,10 @@ class ComponentErrorBoundary extends React.Component<{ children: React.ReactNode
 export default function Home() {
     const [prompt, setPrompt] = useState('');
     const [componentCode, setComponentCode] = useState<string | null>(null);
-    const [compiledComponent, setCompiledComponent] = useState<React.ComponentType<any> | null>(null);
-    const [frontmatter, setFrontmatter] = useState<any>(null);
-    const [spec, setSpec] = useState<any>(null);
-    const [catalogStats, setCatalogStats] = useState<any>(null);
+    const [compiledComponent, setCompiledComponent] = useState<React.ComponentType<Record<string, unknown>> | null>(null);
+    const [frontmatter, setFrontmatter] = useState<Frontmatter | null>(null);
+    const [spec, setSpec] = useState<ComponentSpec | null>(null);
+    const [catalogStats, setCatalogStats] = useState<CatalogStats | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [provider, setProvider] = useState<'openai' | 'anthropic' | 'google'>('openai');
@@ -179,7 +204,7 @@ export default function Home() {
                                 <select
                                     id="provider"
                                     value={provider}
-                                    onChange={(e) => setProvider(e.target.value as any)}
+                                    onChange={(e) => setProvider(e.target.value as 'openai' | 'anthropic' | 'google')}
                                     className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                                     disabled={loading}
                                 >
@@ -338,7 +363,7 @@ export default function Home() {
                                         <div>
                                             <h4 className="font-semibold mb-2">State:</h4>
                                             <ul className="list-disc list-inside space-y-1 text-sm">
-                                                {spec.state.map((s: any, i: number) => (
+                                                {spec.state.map((s, i: number) => (
                                                     <li key={i}>
                                                         <strong>{s.name}</strong>: {s.type} - {s.description}
                                                     </li>
@@ -351,7 +376,7 @@ export default function Home() {
                                         <div>
                                             <h4 className="font-semibold mb-2">Props:</h4>
                                             <ul className="list-disc list-inside space-y-1 text-sm">
-                                                {spec.props.map((p: any, i: number) => (
+                                                {spec.props.map((p, i: number) => (
                                                     <li key={i}>
                                                         <strong>{p.name}</strong>: {p.type} {p.required && <Badge variant="warning" size="sm">required</Badge>}
                                                         <p className="ml-6 text-gray-600">{p.description}</p>
@@ -403,7 +428,7 @@ export default function Home() {
                                         <>
                                             <dt className="font-semibold text-gray-700">Tags:</dt>
                                             <dd className="flex gap-2 flex-wrap">
-                                                {frontmatter.tags.map((tag, i) => (
+                                                {frontmatter.tags.map((tag: string, i: number) => (
                                                     <Badge key={i} variant="secondary" size="sm">{tag}</Badge>
                                                 ))}
                                             </dd>

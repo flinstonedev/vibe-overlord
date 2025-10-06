@@ -5,11 +5,11 @@ import {
     RateLimiter,
     createSecureLogger,
     validateEnvironment,
-    loadConfig,
     scanProject,
     ScannedCatalog
 } from 'vibe-overlord';
 import path from 'path';
+import vibeConfig from '../../../../vibe-overlord.config';
 
 // Initialize rate limiter - 10 requests per minute per IP
 const rateLimiter = new RateLimiter({
@@ -97,8 +97,8 @@ export async function POST(request: Request) {
         // Get project path
         const projectPath = path.resolve(process.cwd());
 
-        // Load configuration from vibe-overlord.config.ts
-        const config = await loadConfig(projectPath);
+        // Use the statically imported config (no dynamic loading needed)
+        const config = vibeConfig;
 
         // Scan project for components and utilities (with caching)
         const now = Date.now();

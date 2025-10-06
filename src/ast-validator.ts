@@ -1,7 +1,10 @@
 import { parse } from '@babel/parser';
-import traverse, { NodePath } from '@babel/traverse';
+import traverseImport, { NodePath } from '@babel/traverse';
 import * as t from '@babel/types';
 import { VibeOverlordConfig } from './config.js';
+
+// Handle CommonJS/ESM interop for @babel/traverse
+const traverse = typeof traverseImport === 'function' ? traverseImport : (traverseImport as any).default;
 
 export interface AstValidationResult {
     isValid: boolean;
@@ -21,8 +24,16 @@ export function validateCodeWithAst(
     const warnings: string[] = [];
 
     try {
+        // Strip frontmatter before parsing
+        let codeToValidate = code;
+        const frontmatterMatch = code.match(/^---\n([\s\S]*?)\n---\n/);
+        if (frontmatterMatch) {
+            // Remove frontmatter for AST parsing
+            codeToValidate = code.slice(frontmatterMatch[0].length);
+        }
+
         // Parse the code
-        const ast = parse(code, {
+        const ast = parse(codeToValidate, {
             sourceType: 'module',
             plugins: ['jsx', 'typescript']
         });
@@ -209,6 +220,11 @@ function isAllowedImport(source: string, config: VibeOverlordConfig): boolean {
         return true;
     }
 
+    // Allow common path aliases (these will be marked as external in bundler)
+    if (source.startsWith('@/') || source.startsWith('~/') || source.startsWith('#/')) {
+        return true;
+    }
+
     // Check against allowed imports list
     if (config.allowedImports.some(allowed => {
         if (allowed.endsWith('*')) {
@@ -221,7 +237,7 @@ function isAllowedImport(source: string, config: VibeOverlordConfig): boolean {
         return true;
     }
 
-    // Check against path aliases
+    // Check against path aliases from config
     if (config.aliases) {
         for (const alias of Object.keys(config.aliases)) {
             if (source.startsWith(alias)) {
@@ -252,7 +268,14 @@ export function extractImports(code: string): string[] {
     const imports: string[] = [];
 
     try {
-        const ast = parse(code, {
+        // Strip frontmatter before parsing
+        let codeToValidate = code;
+        const frontmatterMatch = code.match(/^---\n([\s\S]*?)\n---\n/);
+        if (frontmatterMatch) {
+            codeToValidate = code.slice(frontmatterMatch[0].length);
+        }
+
+        const ast = parse(codeToValidate, {
             sourceType: 'module',
             plugins: ['jsx', 'typescript']
         });

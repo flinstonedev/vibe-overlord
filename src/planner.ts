@@ -25,7 +25,7 @@ export const ComponentSpecSchema = z.object({
     props: z.array(z.object({
         name: z.string(),
         type: z.string(),
-        required: z.boolean(),
+        required: z.boolean().default(false).describe('Whether this prop is required'),
         description: z.string(),
         defaultValue: z.string().optional()
     })).optional().describe('Component props'),

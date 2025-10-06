@@ -2,10 +2,13 @@ import { glob } from 'glob';
 import { readFileSync } from 'fs';
 import { join, relative } from 'path';
 import { parse } from '@babel/parser';
-import traverse, { NodePath } from '@babel/traverse';
+import traverseImport, { NodePath } from '@babel/traverse';
 import * as t from '@babel/types';
 import { VibeOverlordConfig } from './config.js';
 import { AvailableComponent, AvailableUtility } from './index.js';
+
+// Handle CommonJS/ESM interop for @babel/traverse
+const traverse = typeof traverseImport === 'function' ? traverseImport : (traverseImport as any).default;
 
 export interface ScannedCatalog {
     components: AvailableComponent[];
@@ -274,21 +277,42 @@ function isReactComponent(node: any): boolean {
             returnsJSX = true;
         }
 
-        // Block body with return statement
+        // Block body with return statement - check recursively
         if (t.isBlockStatement(body)) {
-            traverse(body, {
-                ReturnStatement(path: NodePath<t.ReturnStatement>) {
-                    const argument = path.node.argument;
-                    if (t.isJSXElement(argument) || t.isJSXFragment(argument)) {
-                        returnsJSX = true;
-                        path.stop();
-                    }
-                }
-            });
+            returnsJSX = checkBlockForJSXReturn(body);
         }
     }
 
     return returnsJSX;
+}
+
+/**
+ * Recursively check a BlockStatement for JSX return statements
+ */
+function checkBlockForJSXReturn(block: t.BlockStatement): boolean {
+    for (const statement of block.body) {
+        if (t.isReturnStatement(statement)) {
+            const argument = statement.argument;
+            if (t.isJSXElement(argument) || t.isJSXFragment(argument)) {
+                return true;
+            }
+        }
+        // Check nested blocks (if statements, etc.)
+        if (t.isIfStatement(statement)) {
+            if (t.isBlockStatement(statement.consequent) && checkBlockForJSXReturn(statement.consequent)) {
+                return true;
+            }
+            if (statement.alternate && t.isBlockStatement(statement.alternate) && checkBlockForJSXReturn(statement.alternate)) {
+                return true;
+            }
+        }
+        if (t.isBlockStatement(statement)) {
+            if (checkBlockForJSXReturn(statement)) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 /**
@@ -435,7 +459,7 @@ function extractReturnType(node: any): string | undefined {
 /**
  * Get import path relative to project root
  */
-function getImportPath(filePath: string, projectPath: string, config: VibeOverlordConfig): string {
+function getImportPath(filePath: string, projectPath: string, _config: VibeOverlordConfig): string {
     const relativePath = relative(projectPath, filePath);
 
     // Remove file extension
@@ -459,7 +483,7 @@ function generateComponentExample(name: string, props?: string): string {
 /**
  * Generate example usage for a utility
  */
-function generateUtilityExample(name: string, signature: string): string {
+function generateUtilityExample(_name: string, signature: string): string {
     return `const result = await ${signature};`;
 }
 

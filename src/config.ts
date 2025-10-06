@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
+import JSON5 from 'json5';
 
 /**
  * Configuration schema for Vibe Overlord
@@ -138,43 +139,34 @@ export const defaultConfig: VibeOverlordConfig = {
 
 /**
  * Load configuration from project root
+ *
+ * IMPORTANT: This function only loads JSON config files and detects tsconfig aliases.
+ * For .ts/.js config files, import them directly in your application and pass to generateComponent.
+ *
+ * Example:
+ * ```typescript
+ * import config from './vibe-overlord.config';
+ * await generateComponent({ config, ... });
+ * ```
  */
 export async function loadConfig(projectPath: string): Promise<VibeOverlordConfig> {
-    const configPaths = [
-        join(projectPath, 'vibe-overlord.config.ts'),
-        join(projectPath, 'vibe-overlord.config.js'),
-        join(projectPath, 'vibe-overlord.config.json')
-    ];
+    // Try loading JSON config file (if it exists)
+    const jsonConfigPath = join(projectPath, 'vibe-overlord.config.json');
+    let config = { ...defaultConfig };
 
-    for (const configPath of configPaths) {
-        if (existsSync(configPath)) {
-            try {
-                let configData: any;
-
-                if (configPath.endsWith('.json')) {
-                    configData = JSON.parse(readFileSync(configPath, 'utf-8'));
-                } else {
-                    // Dynamic import for .ts/.js files
-                    const module = await import(configPath);
-                    configData = module.default || module.config;
-                }
-
-                // Merge with defaults and validate
-                const config = VibeOverlordConfigSchema.parse({
-                    ...defaultConfig,
-                    ...configData
-                });
-
-                return config;
-            } catch (error) {
-                console.warn(`Failed to load config from ${configPath}:`, error);
-            }
+    if (existsSync(jsonConfigPath)) {
+        try {
+            const configData = JSON5.parse(readFileSync(jsonConfigPath, 'utf-8'));
+            config = VibeOverlordConfigSchema.parse({
+                ...defaultConfig,
+                ...configData
+            });
+        } catch (error) {
+            console.warn(`Failed to load config from ${jsonConfigPath}:`, error);
         }
     }
 
     // Auto-detect tsconfig aliases if enabled
-    let config = { ...defaultConfig };
-
     if (config.autoDetectAliases) {
         const aliases = await detectTsConfigAliases(projectPath);
         if (aliases) {
@@ -197,9 +189,8 @@ async function detectTsConfigAliases(projectPath: string): Promise<Record<string
 
     try {
         const tsconfigContent = readFileSync(tsconfigPath, 'utf-8');
-        // Remove comments and parse JSON
-        const cleanContent = tsconfigContent.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, '');
-        const tsconfig = JSON.parse(cleanContent);
+        // Use JSON5 to properly parse tsconfig.json with comments and trailing commas
+        const tsconfig = JSON5.parse(tsconfigContent);
 
         const paths = tsconfig?.compilerOptions?.paths;
         if (!paths) {
@@ -220,7 +211,8 @@ async function detectTsConfigAliases(projectPath: string): Promise<Record<string
 
         return Object.keys(aliases).length > 0 ? aliases : undefined;
     } catch (error) {
-        console.warn('Failed to parse tsconfig.json:', error);
+        // Silently fail and continue without aliases
+        // This is expected if tsconfig has complex syntax or doesn't exist
         return undefined;
     }
 }

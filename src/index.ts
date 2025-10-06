@@ -20,6 +20,7 @@ import {
   findRelevantTemplates,
   buildFewShotExamples
 } from './template-loader.js';
+import { fixTypeScriptForMDX } from './mdx-typescript-fixer.js';
 
 export type AIProvider = 'openai' | 'anthropic' | 'google';
 
@@ -45,6 +46,20 @@ export interface AvailableComponent {
   example?: string;
   importPath?: string;
 }
+
+/**
+ * Strip markdown code blocks from LLM output
+ * Sometimes LLMs wrap output in ```mdx ... ``` despite instructions
+ */
+const stripCodeBlocks = (text: string): string => {
+  // Remove opening code fence (```mdx, ```jsx, ```typescript, etc.)
+  let cleaned = text.replace(/^```[a-z]*\n/gm, '');
+  // Remove closing code fence
+  cleaned = cleaned.replace(/\n```$/gm, '');
+  // Also handle inline code fences that might be at start/end
+  cleaned = cleaned.replace(/^```\n/, '').replace(/\n```$/, '');
+  return cleaned.trim();
+};
 
 const getMdxFromLlm = async (
   prompt: string,
@@ -99,10 +114,23 @@ const getMdxFromLlm = async (
 
   const typeScriptNote = config.allowTypescript
     ? `
-    TypeScript is ALLOWED in this project.
-    - Use TypeScript type annotations where appropriate
-    - Define interfaces for complex prop types
-    - Use type assertions when needed
+    TypeScript interfaces are ALLOWED for props definitions.
+    HOWEVER, due to MDX limitations, you MUST follow these rules:
+
+    ✅ CORRECT - Non-destructured parameters:
+    interface Props { name: string; email: string; }
+    export const Component = (props: Props) => {
+      const { name, email } = props;
+      return <div>{name}</div>;
+    };
+
+    ❌ WRONG - Destructured parameters with types:
+    export const Component = ({ name, email }: Props) => { ... }  // CAUSES PARSE ERROR!
+
+    ❌ WRONG - Type annotations on exports:
+    export const Component: React.FC<Props> = ...  // CAUSES PARSE ERROR!
+
+    CRITICAL: NEVER use type annotations in function parameter destructuring. ALWAYS use non-destructured parameters with types.
     `
     : `
     ONLY use JavaScript syntax. Do NOT use TypeScript type annotations, interfaces, or type definitions.
@@ -212,7 +240,8 @@ const getMdxFromLlm = async (
     prompt,
   });
 
-  return text;
+  // Strip any markdown code blocks the LLM might have added
+  return stripCodeBlocks(text);
 };
 
 interface GenerateComponentOptions {
@@ -351,10 +380,14 @@ export async function generateComponent({
         logger.info('Attempting self-healing retry...');
 
         const errorContext = `
-Previous attempt failed validation with these errors:
+⚠️ PREVIOUS ATTEMPT FAILED WITH THESE ERRORS:
 ${validationResult.errors.join('\n')}
 
-Please fix these issues and regenerate the component.
+CRITICAL INSTRUCTIONS FOR RETRY:
+- Fix the errors above
+- Do NOT wrap output in code blocks (no \`\`\`mdx or \`\`\`typescript)
+- Output ONLY raw MDX content
+- Start with --- frontmatter, then imports, then component code
 `;
 
         const retryPrompt = sanitizedPrompt + '\n\n' + errorContext;
@@ -398,11 +431,55 @@ version: "1.0.0"
       processedMdxSource = defaultFrontmatter + mdxSource;
     }
 
+    // Transpile TypeScript to JavaScript for MDX compatibility
+    if (finalConfig.allowTypescript) {
+      processedMdxSource = fixTypeScriptForMDX(processedMdxSource);
+      logger.info('Transpiled TypeScript to JavaScript for MDX compatibility');
+    }
+
     // Compile with mdx-bundler
-    const { code, frontmatter } = await bundleMDX({
-      source: processedMdxSource,
-      cwd: secureProjectPath,
-    });
+    let code: string;
+    let frontmatter: any;
+
+    try {
+      const result = await bundleMDX({
+        source: processedMdxSource,
+        cwd: secureProjectPath,
+        esbuildOptions: (options) => {
+          // Mark all relative and alias imports as external
+          // This prevents bundler from trying to resolve them
+          // They'll be resolved at runtime by the consuming app
+          options.plugins = [
+            ...(options.plugins || []),
+            {
+              name: 'external-project-imports',
+              setup(build) {
+                // Mark relative imports as external (./utils, ../components, etc)
+                build.onResolve({ filter: /^\.\.?\// }, args => ({
+                  path: args.path,
+                  external: true
+                }));
+
+                // Mark @/ alias imports as external
+                build.onResolve({ filter: /^@\// }, args => ({
+                  path: args.path,
+                  external: true
+                }));
+              }
+            }
+          ];
+          return options;
+        }
+      });
+      code = result.code;
+      frontmatter = result.frontmatter;
+    } catch (bundleError) {
+      logger.error('MDX bundling failed', {
+        error: bundleError,
+        generatedSource: processedMdxSource.substring(0, 1000) // Log first 1000 chars to see line 18
+      });
+      throw new Error(`Failed to compile generated component: ${bundleError instanceof Error ? bundleError.message : 'Unknown bundling error'}`);
+    }
 
     logger.info('Component generated successfully');
     return {
