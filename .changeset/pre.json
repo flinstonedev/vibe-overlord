@@ -1,0 +1,8 @@
+{
+  "mode": "pre",
+  "tag": "next",
+  "initialVersions": {
+    "vibe-overlord": "2.0.2"
+  },
+  "changesets": []
+}
